@@ -76,6 +76,7 @@ We focus on three concerns that are important in most software systems:
   * Approach 2 does not work for users with many followers, since the approach would need to update too many home timeline caches.
   * Distribution of followers in this case is a load parameter.
   * We can use approach 1 for users with many followers and approach 2 for the others.
+  * Twitter is now implementing a hybrid of both approaches. For most users, tweets continue to be fanned out to home timelines at the time when they are posted. However, for a small number of users with millions of followers (celebrities), they are exempted from the fan out.
 
 ![Figure 1-1](images/fig-1-2.png)
 
@@ -92,11 +93,10 @@ We focus on three concerns that are important in most software systems:
 * The latency from an end user request is the slowest of all the parallel calls. The more backend calls we make, the higher the chance that one of the requests were slow. This is known as tail latency amplification.
 
 ### Coping with Load
-* Scaling up (vertical scaling, with a more powerful machine) and scaling out (horizontal scaling, distributing the load across multiple machines, the shared-nothing architecture) are two popular approaches to cope with increasing load. Good architectures usually involves a mixture of both.
+* **Scaling up (vertical scaling**, with a more powerful machine) and **scaling out (horizontal scaling**, distributing the load across multiple machines, the shared-nothing architecture) are two popular approaches to cope with increasing load. Good architectures usually involves a mixture of both.
 * Elastic systems can add computing resources when load increases automatically but it may have more surprises.
 * Scaling up stateful data systems can be complex. For this reason, common wisdom is to use a single node until cost or availability requirements are no longer satisfied. Of course this may change in the future.
 * The architecture for large scale systems is usually highly specific and built around its assumptions on which operations will be common or rare. There is no one-size-fits-all scalable architecture.
-
 
 ## Maintainability
 * Three design principles to minimize pain for maintenance.
@@ -124,4 +124,4 @@ We focus on three concerns that are important in most software systems:
 * Refactoring large data systems is different from refactoring a small local application (Agile); therefore, we use the term evolvability to refer to ease to make changes in a data system.
 
 Reference:
-https://aweather.github.io/software-engineering/ddia-1/ 
+* https://aweather.github.io 
