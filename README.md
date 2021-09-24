@@ -43,6 +43,8 @@ We focus on three concerns that are important in most software systems:
 
 ### Hardware Faults
 * In the past, people use redundant hardware to keep machine/service running.
+* Hard disks are reported as having a mean time to failure (MTTF) of about 10 to 50 years. Thus, on a storage cluster with 10,000 disks, we should expect on average one disk to die per day.
+* AWS’s virtual machine platforms are designed to prioritize flexibility and elasticity over single-machine reliability.
 * Recently, platforms are designed to prioritize flexibility and elasticity. Systems can tolerate loss of whole machines. No down time scheduled needed for single machine maintenance.
 
 ### Software Errors
@@ -69,11 +71,13 @@ We focus on three concerns that are important in most software systems:
 
 * Twitter example
   * Twitter has two main operations: post Tweet and home timeline (~100x more requests than post Tweet).
-  * Approach 1: If we store Tweets in a simple database, home timeline queries may be slow.
-  * Approach 2: We can push Tweets into the home timeline cache of each follower when a Tweet is published.
+  * Approach 1: If we store Tweets in a simple database, home timeline queries may be slow. Posting a tweet simply inserts the new tweet into a global collection of tweets. When a user requests their home timeline, look up all the people they follow, find all the tweets for each of those users, and merge them.
+  * Approach 2: We can push Tweets into the home timeline cache of each follower when a Tweet is published. Maintain a cache for each user’s home timeline — like a mailbox of tweets for each recipient user. When a user posts a tweet, look up all the people who follow that user, and insert the new tweet into each of their home timeline caches.
   * Approach 2 does not work for users with many followers, since the approach would need to update too many home timeline caches.
   * Distribution of followers in this case is a load parameter.
   * We can use approach 1 for users with many followers and approach 2 for the others.
+
+![Figure 1-1](images/fig-1-2.png)
 
 ### Performance
 * Two ways to look at performance.
@@ -81,6 +85,7 @@ We focus on three concerns that are important in most software systems:
   * When we increase load parameters how much resource do we need to keep performance unchanged.
 * Batch processing systems cares about throughput (number of records processed per second).
 * Online systems cares about the response time, which is measured in percentiles like p50, p90, p99, p999.
+* Random additional latency could be introduced by a context switch to a background process, the loss of a network packet and TCP retransmission, a garbage collection pause, a page fault forcing a read from disk, mechanical vibrations in the server rack, or many other causes.
 * Tail latencies (p999) are sometimes important as they are usually requests from users with a lot of data.
 * Percentiles are often used in service level objectives (SLOs) and service level agreements (SLAs)
 * Queuing delays often account for a large part of high percentiles. Since parallelism is limited in servers. Slow requests may cause head-of-line blocking and make subsequent requests slow.
