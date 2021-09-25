@@ -1,8 +1,12 @@
 # Designing Data Intensive Application
 
+# Table of Contents
+1. [Chapter 1: Reliable, Scalable, and Maintainable Applications](#chapter1)
+2. [Chapter 2: Data Model and Query Languages](#chapter2)
+
 * We call an application data-intensive if data is its primary challenge - the quantity of data, the complexity of data, or the speed at which it is changing - as opposed to compute-intensive, where CPU cycles are the bottleneck.
 
-# Chapter 1: Reliable, Scalable, and Maintainable Applications
+# Chapter 1: Reliable, Scalable, and Maintainable Applications <a name="chapter1"></a>
 
 * A data-intensive application is typically built from standard building blocks that provide commonly needed functionality. Many applications need to:
   * Store data so that they, or another application, can find it again later (**databases**)
@@ -126,7 +130,7 @@ We focus on three concerns that are important in most software systems:
 
 ---
 
-# Chapter 2: Data Model and Query Languages
+# Chapter 2: Data Model and Query Languages <a name="chapter2"></a>
 
 ## Overview
 * Data models are important part of developing software, it deeply affects how we think about the problem.
