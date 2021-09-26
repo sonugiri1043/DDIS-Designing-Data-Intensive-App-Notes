@@ -248,79 +248,80 @@ We focus on three concerns that are important in most software systems:
 # Chapter 3: Storage and Retrieval <a name="chapter3"></a>
 
 ## Overview
-Databases fundamentally does two things: Store data and retrieve the stored data.
-Chapter 3 discusses how data model and queries are interpreted by databases.
-Understanding under-the-hood details can help us pick the right solution and tune the performance.
-We’ll first look at two types of storage engines: log-structured and page-oriented storage engines.
-Data Structures That Power Your Database
-Many databases internally uses a log, which is a append-only data file.
-To retrieve data efficiently, we need an index, which is an additional structure derived from primary data and only affects performance of queries.
-Well-chosen indexes speed up queries but slow down writes. Therefore, databases don’t index everything by default and requires developers to use knowledge of query pattens to choose index manually.
-Hash Indexes
-Hash Indexes are for key-value data and are similar to a dictionary, which is usually implemented as a hash map (hash table).
-If the database writes only append new entires to a file, the hash table can simply store key to byte offset in the data file. The hash table (with keys) has to fit into memory for quick look up performance, but the values don’t have to fit into memory.
-To avoid the disk run out of space, a good solution is to break logs into segments and perform compaction (remove duplicate keys). Further, file segments can be merged while performing compaction. We can use a background thread to perform merging and compaction and switch our read request to the newly created segment when they are read. Afterwards, old segments can be deleted.
-There are a few details for a real implementation of the idea above
-Use bytes instead of CSV
-Deletes are adding a special log entry to the data file (tombstone) and the data will be removed during merging and compaction.
-Index will need to be snapshotted for fast crash recovery (compared to re-indexing).
-Checksums are required for detecting partially written records.
-Writes has to strictly be in sequential order. Many implementation choose to have one writer thread.
-Why append-only logs are good
-Sequential writes are much faster than random writes, especially on magnetic spinning-disk hard drives and to some extent SSDs.
-Concurrency and crash recovery are much simpler if segment files are append-only or immutable.
-Merging old segments avoids data fragmentation.
-What are the limitations of hash table indexes?
-Hash table must fit into memory. If there are too many keys, it will not fit.
-Range queries are not efficient.
-SSTables and LSM-Trees
-The Sorted String Table (SSTable) requires each segment file to be sorted by key. It has the following advantages.
-Merging segments is simple and efficient.
-We no longer require offset of every single key for efficient lookup. One key for every few kilobytes of segment file is usually sufficient.
-Since reading requires a linear scan in between indexed keys, we can group those records and compress them to save storage or I/O bandwidth.
-Constructing and maintaining SSTables
-While maintaining a sorted structure on disk is possible (B-Trees), red-black trees or AVL trees can be used to keep logs sorted in memory. The flow is as follows:
-When a write comes in, insert the entry to the in-memory data structure (sometimes called memtable).
-When memtable gets bigger than some threshold (a few megabytes), create a new memtable to handle new writes, and write the old memtable to disk.
-For reads, first try to find the key in memtable, and in the latest segment, and in the second last segment…
-Occasionally, run a merging and compaction process to combine segment files.
-The issue with this scheme is that in-memory data will be lost if the database crashes. We can keep a separate unsorted log for recovery and this log can be discarded whenever a memtable is dumped to disk.
-This indexing structure is named Log-Structure Merge-Tree (LSM-Tree).
-Making an LSM-tree out of SSTables
-The algorithm here is used by LevelDB and RocksDB, which are key-value storage libraries to be used in other applications. Similar storage systems are also used in Cassandra and HBase.
-Systems that uses the principle of merging and compacting sorted files are often called LSM systems.
-Performance optimizations
-A look up can take a long time if the entry does not exist in any of the memtable. Bloom filters can be used to solve this issue.
-There are two major strategies to determine the order and timing of merging and compaction: size-tiered (HBase, Cassandra) and level compaction (LevelDB, RockDB, Cassandra).
-Size-tiered: newer and smaller SSTables are merged into larger ones.
-Level: The key range is split up into several SSTables and older data is moved to separate “levels,” which allows compaction to proceed more incrementally and use less disk space.
-LSM-tree: Write throughput is high. Can efficiently index data much larger than memory.
-B-Trees
-While log-structured indexes are gaining acceptance, B-tree is the most widely used indexing structure.
-B-trees is the standard index implementation for almost all relational databases and most non-relational databases.
-B-trees also keep key-value entires sorted by key, which allows quick value lookups and range queries.
-Log-structure indexes breaks databases down into variable length segments (several mbs or more), while B-tree breaks databases down into a fixed-size blocks or pages (4KB traditionally, but depends on underlying hardware).
-Each page can be identified by an address or location, which can be stored in another page on disk.
-A root page contains the full range of keys (or reference to pages containing the full range) and is where query start.
-A leaf page contains only individual keys, which contains the value inline or reference to where the values can be found.
-The branching factor is the number of references to a child page in one page of a B-tree.
-When changing values in B-trees, the page containing the value is looked up, modified, and written back to disk.
-When adding new values, first, the page whose range contains the key is looked up. If there is extra space in the page, the key-value entry is simply added, else, the page is split into two halves and the parent page is updated to account for the new file structure.
-The algorithm above ensures a B-tree with 
-n
- nodes is always balanced and has a depth of 
-O
-(
-l
-o
-g
-n
-)
-.
-Making B-Trees reliable
-When changing values or splitting pages, the B-tree overwrites data on disk. This is a risky operation. If anything crashes during an overwrite, the index could be corrupted.
-To make B-tree more resilient to such failures, a common solution is to include an write-ahead-log (WAL, or redo log), which every B-tree modification is first written to. In case of failure, this log can be used to restore the B-tree back to a consistent state.
-Care should also be taken when multiple threads may access the B-tree at the same time. An inconsistent state could be read during an update. Latches (lightweight locks) can be placed to protect the tree’s integrity.
+* Databases fundamentally does two things: Store data and retrieve the stored data.
+* Chapter 3 discusses how data model and queries are interpreted by databases.
+* Understanding under-the-hood details can help us pick the right solution and tune the performance.
+* We’ll first look at two types of storage engines: log-structured and page-oriented storage engines.
+
+## Data Structures That Power Your Database
+* Many databases internally uses a log, which is a append-only data file.
+* To retrieve data efficiently, we need an index, which is an additional structure derived from primary data and only affects performance of queries.
+* Well-chosen indexes speed up queries but slow down writes. Therefore, databases don’t index everything by default and requires developers to use knowledge of query pattens to choose index manually.
+
+## Hash Indexes
+* Hash Indexes are for key-value data and are similar to a dictionary, which is usually implemented as a hash map (hash table).
+* If the database writes only append new entires to a file, the hash table can simply store key to byte offset in the data file. The hash table (with keys) has to fit into memory for quick look up performance, but the values don’t have to fit into memory.
+* To avoid the disk run out of space, a good solution is to break logs into segments and perform compaction (remove duplicate keys). Further, file segments can be merged while performing compaction. We can use a background thread to perform merging and compaction and switch our read request to the newly created segment when they are read. Afterwards, old segments can be deleted.
+* Bitcask (the default storage engine in Riak) does it like that. The only requirement it has is that all the keys fit in the available RAM. Values can use more space than there is available in memory, since they can be loaded from disk.
+* A storage engine like Bitcask is well suited to situations where the value for each key is updated frequently. There are a lot of writes, but there are too many distinct keys, you have a large number of writes per key, but it's feasible to keep all keys in memory.
+* There are a few details for a real implementation of the idea above
+  * Use bytes instead of CSV
+  * Deletes are adding a special log entry to the data file (tombstone) and the data will be removed during merging and compaction.
+  * Index will need to be snapshotted for fast crash recovery (compared to re-indexing).
+  * Checksums are required for detecting partially written records.
+  * Writes has to strictly be in sequential order. Many implementation choose to have one writer thread.
+* Why append-only logs are good
+  * Sequential writes are much faster than random writes, especially on magnetic spinning-disk hard drives and to some extent SSDs.
+  * Concurrency and crash recovery are much simpler if segment files are append-only or immutable.
+  * Merging old segments avoids data fragmentation.
+* What are the limitations of hash table indexes?
+  * Hash table must fit into memory. If there are too many keys, it will not fit.
+  * Range queries are not efficient.
+
+## SSTables and LSM-Trees
+* The **Sorted String Table (SSTable)** requires each segment file to be sorted by key. It has the following advantages.
+  * Merging segments is simple and efficient.
+  * We no longer require offset of every single key for efficient lookup. One key for every few kilobytes of segment file is usually sufficient.
+  * Since reading requires a linear scan in between indexed keys, we can group those records and compress them to save storage or I/O bandwidth.
+
+### Constructing and maintaining SSTables
+* While maintaining a sorted structure on disk is possible (B-Trees), red-black trees or AVL trees can be used to keep logs sorted in memory. The flow is as follows:
+  * When a write comes in, insert the entry to the in-memory data structure (sometimes called **memtable**).
+  * When memtable gets bigger than some threshold (a few megabytes), create a new memtable to handle new writes, and write the old memtable to disk.
+  * For reads, first try to find the key in memtable, and in the latest segment, and in the second last segment.
+  * Occasionally, run a merging and compaction process to combine segment files.
+* The issue with this scheme is that in-memory data will be lost if the database crashes. We can keep a separate unsorted log for recovery and this log can be discarded whenever a memtable is dumped to disk.
+* This indexing structure is named **Log-Structure Merge-Tree (LSM-Tree)**.
+
+### Making an LSM-tree out of SSTables
+* The algorithm here is used by LevelDB and RocksDB, which are key-value storage libraries to be used in other applications. Similar storage systems are also used in Cassandra and HBase.
+* Systems that uses the principle of merging and compacting sorted files are often called LSM systems.
+
+### Performance optimizations
+* A look up can take a long time if the entry does not exist in any of the memtable. Bloom filters can be used to solve this issue.
+* There are two major strategies to determine the order and timing of merging and compaction: size-tiered (HBase, Cassandra) and level compaction (LevelDB, RockDB, Cassandra).
+  * Size-tiered: newer and smaller SSTables are merged into larger ones.
+  * Level: The key range is split up into several SSTables and older data is moved to separate “levels,” which allows compaction to proceed more incrementally and use less disk space.
+* LSM-tree: Write throughput is high. Can efficiently index data much larger than memory.
+
+## B-Trees
+* While log-structured indexes are gaining acceptance, B-tree is the most widely used indexing structure.
+* B-trees is the standard index implementation for almost all relational databases and most non-relational databases.
+* B-trees also keep key-value entires sorted by key, which allows quick value lookups and range queries.
+* Log-structure indexes breaks databases down into variable length segments (several mbs or more), while B-tree breaks databases down into a fixed-size blocks or pages (4KB traditionally, but depends on underlying hardware).
+* Each page can be identified by an address or location, which can be stored in another page on disk.
+* A root page contains the full range of keys (or reference to pages containing the full range) and is where query start.
+* A leaf page contains only individual keys, which contains the value inline or reference to where the values can be found.
+* The branching factor is the number of references to a child page in one page of a B-tree.
+* When changing values in B-trees, the page containing the value is looked up, modified, and written back to disk.
+* When adding new values, first, the page whose range contains the key is looked up. If there is extra space in the page, the key-value entry is simply added, else, the page is split into two halves and the parent page is updated to account for the new file structure.
+* The algorithm above ensures a B-tree with n nodes is always balanced and has a depth of O(logn).
+
+### Making B-Trees reliable
+* When changing values or splitting pages, the B-tree overwrites data on disk. This is a risky operation. If anything crashes during an overwrite, the index could be corrupted.
+* To make B-tree more resilient to such failures, a common solution is to include an write-ahead-log (WAL, or redo log), which every B-tree modification is first written to. In case of failure, this log can be used to restore the B-tree back to a consistent state.
+* Care should also be taken when multiple threads may access the B-tree at the same time. An inconsistent state could be read during an update. Latches (lightweight locks) can be placed to protect the tree’s integrity.
+
 B-tree optimizations
 Just to mention a few optimizations:
 Copy-on-write and atomic to remove the need to maintain a WAL for crashes
@@ -415,4 +416,5 @@ Updating materialized view, when data changes, is expensive, and therefore mater
 A common special case of materialized view is a data cube or OLAP cube, where data is pre-summarized over each dimension. This enables fast queries with precomputed queries, yet a data cube may not have the flexibility as raw data.
 
 
-DDIS pdf:https://github.com/Yang-Yanxiang/Designing-Data-Intensive-Applications 
+DDIS Pdf:https://github.com/Yang-Yanxiang/Designing-Data-Intensive-Applications 
+Other Ref: https://aweather.github.io/software-engineering
