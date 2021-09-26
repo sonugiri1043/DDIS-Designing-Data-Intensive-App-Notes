@@ -261,8 +261,10 @@ We focus on three concerns that are important in most software systems:
 ## Hash Indexes
 * Hash Indexes are for key-value data and are similar to a dictionary, which is usually implemented as a hash map (hash table).
 * If the database writes only append new entires to a file, the hash table can simply store key to byte offset in the data file. The hash table (with keys) has to fit into memory for quick look up performance, but the values don’t have to fit into memory.
+![Hash Index](images/fig-3-1.png)
 * To avoid the disk run out of space, a good solution is to break logs into segments and perform compaction (remove duplicate keys). Further, file segments can be merged while performing compaction. We can use a background thread to perform merging and compaction and switch our read request to the newly created segment when they are read. Afterwards, old segments can be deleted.
 * Bitcask (the default storage engine in Riak) does it like that. The only requirement it has is that all the keys fit in the available RAM. Values can use more space than there is available in memory, since they can be loaded from disk.
+![Segment Compaction](images/fig-3-3.png)
 * A storage engine like Bitcask is well suited to situations where the value for each key is updated frequently. There are a lot of writes, but there are too many distinct keys, you have a large number of writes per key, but it's feasible to keep all keys in memory.
 * There are a few details for a real implementation of the idea above
   * Use bytes instead of CSV
@@ -283,6 +285,7 @@ We focus on three concerns that are important in most software systems:
   * Merging segments is simple and efficient.
   * We no longer require offset of every single key for efficient lookup. One key for every few kilobytes of segment file is usually sufficient.
   * Since reading requires a linear scan in between indexed keys, we can group those records and compress them to save storage or I/O bandwidth.
+![SSTable with in memory index](images/fig-3-5.png)
 
 ### Constructing and maintaining SSTables
 * While maintaining a sorted structure on disk is possible (B-Trees), red-black trees or AVL trees can be used to keep logs sorted in memory. The flow is as follows:
@@ -310,11 +313,13 @@ We focus on three concerns that are important in most software systems:
 * B-trees also keep key-value entires sorted by key, which allows quick value lookups and range queries.
 * Log-structure indexes breaks databases down into variable length segments (several mbs or more), while B-tree breaks databases down into a fixed-size blocks or pages (4KB traditionally, but depends on underlying hardware).
 * Each page can be identified by an address or location, which can be stored in another page on disk.
+![BTree](images/fig-3-6.png)
 * A root page contains the full range of keys (or reference to pages containing the full range) and is where query start.
 * A leaf page contains only individual keys, which contains the value inline or reference to where the values can be found.
 * The branching factor is the number of references to a child page in one page of a B-tree.
 * When changing values in B-trees, the page containing the value is looked up, modified, and written back to disk.
 * When adding new values, first, the page whose range contains the key is looked up. If there is extra space in the page, the key-value entry is simply added, else, the page is split into two halves and the parent page is updated to account for the new file structure.
+![BTree Addition](images/fig-3-7.png)
 * The algorithm above ensures a B-tree with n nodes is always balanced and has a depth of O(logn).
 
 ### Making B-Trees reliable
