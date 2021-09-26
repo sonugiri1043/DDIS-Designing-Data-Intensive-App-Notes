@@ -374,14 +374,8 @@ We focus on three concerns that are important in most software systems:
 ## Transaction Processing or Analytics?
 * The term transaction (an entry) was coined in the early days of databases, where commercial transactions were the main entries in databases. Although the data in databases are now different, the access pattern: looking up a few entries by key, inserting or updating data based on user input, remains the same and is referred to as online transaction processing (OLTP).
 * Databases nowadays are also used for data analytics. The access pattern: scanning through the whole database and performing aggregation, is a very different from OLTP. This pattern is referred to as the online analytic processing (OLAP).
--- 
-OLTP	OLAP
-Main read pattern	Small number of records, fetched by key	Aggregated over large number of records
-Main write pattern	Random-access, low-latency writes from user input	Bulk import or event stream
-Primarily used by	Customer, through web-application	Analysts, for making business decisions
-Data	Latest state of the world	History of events
-Size	GB to TB	TB to PB
-Bottleneck	Disk seek time	Disk bandwidth
+
+![OLTP vs OLAP](images/Table-3-1.png)
 
 * Starting 1980s, people stopped using OLTP systems for OLAP applications. The data for analytics is hosted in a separate database - a data warehouse.
 
@@ -389,6 +383,9 @@ Bottleneck	Disk seek time	Disk bandwidth
 * OLTP is expected to be highly available with low latency, so it is not ideal to run analytics on OLTP databases.
 * A data warehouse contains a read-only copy of the data in OLTP systems through periodic dumps or stream of updates.
 * The process of getting data from OLTP systems to data warehouses is called Extract-Transform-Load (ETL).
+
+![ETL](images/fig-3.8.png)
+
 * Data warehouses, separate from OLTP systems, can be optimized for analytics access patterns.
 * The indexing algorithms mentioned above are for OLTP systems, not analytics.
 
