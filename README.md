@@ -135,7 +135,7 @@ We focus on three concerns that are important in most software systems:
 ## Overview
 * Data models are important part of developing software, it deeply affects how we think about the problem.
 * Data models are built by layering one on top of another. The key question is: “how is it represented in terms of the next-lower layer?” Each layer hides the complexity of the layers below by providing a clean model.
-* Every data model embodies assumptions on how it is going to be used. The data model has a profound effect on what the software above can or cannot do.
+* The data model has a profound effect on what the software above can or cannot do.
 * In this chapter, we will compare the relational model, the document model, and a few graph-based models. We will also look at and compare various query languages.
 
 ## Relational Model Versus Document Model
@@ -153,19 +153,17 @@ We focus on three concerns that are important in most software systems:
 * It’s likely that relational databases will continue to be used along with many nonrelational databases.
 
 ### The Object-Relational Mismatch
-* The OOP paradigm requires translation between the relational database model.
+* With a SQL model, if data is stored in a relational tables, an awkward translation layer is translated, this is called impedance mismatch.
 * Strategies to deal with the mismatch
   * Normalized databases with foreign keys.
   * Use a database that Supports for structured data (PostgreSQL)
   * Encode as JSON or XML and store as text in database. It can’t be queried this way.
   * Store as JSON in a document in document-oriented databases (MongoDB). This has a better locality than the normalized representation.
+* JSON representation has better locality than the multi-table SQL schema. All the relevant information is in one place, and one query is sufficient.
 
 ## Many-to-One and Many-to-Many Relationships
 * For enum-type strings, we can store a separate normalized ID to string table, and use the ID in other parts of the database. This will enforce consistency (same spelling, better search), avoid ambiguity, be easier to update, support localization.
 * Using ids reduces duplication. This is the key idea behind normalizing databases. Yet this requires a many-to-one relationship, which may not work well with document databases, whose support for joins are weak.
-
-### Are Document Databases Repeating History
-* In 1970s, the IBM’s Information Management System also used a hierarchical model, similar to the JSON model. Data was represented as a tree of records, nested within records, and the network model and relational model was proposed to solve the limitations of the hierarchical model.
 
 ### Relational Versus Document Databases Today
 * We then compare the data model of relational and document databases.
@@ -180,7 +178,7 @@ We focus on three concerns that are important in most software systems:
 
 #### Schema flexibility in the document level
 * XML support in relational databases usually comes with schema validation while JSON support does not.
-* Document databases are sometimes called schemaless, yet there is an implicit schema. A more accurate term is schema-on-read, meaning schema is only interpreted when data is read, in contrast with schema-on-write for relational database, where validation occurs during write time.
+* Document databases are sometimes called schemaless, yet there is an implicit schema. A more accurate term is **schema-on-read**, meaning schema is only interpreted when data is read, in contrast with **schema-on-write** for relational database, where validation occurs during write time.
 * An analogy to type checking is dynamic type checking (runtime) and static typing checking (compile-time). In general there is no right or wrong answer.
 * To change a schema in document databases, applications would start writing new documents with the new schema, while in relational databases, one would need a migration query (which is quick for most databases, except MySQL).
 * Schema-on-read is advantageous if items in the collection don’t all have the same structure.
@@ -197,7 +195,7 @@ We focus on three concerns that are important in most software systems:
 * A hybrid of relational and document models is probably the future.
 
 ## Query Language for Data
-* SQL is a declarative query language, while IMS (IBM’s Information Management System) and CODASYL are queried by imperative code.
+* SQL is a declarative query language.
 * In a declarative language, only the goal is specified, not how the goal is achieved. It hides implementation details and leaves room for performance optimization.
 * The fact that SQL is more limited in functionality gives databases more room for automatic optimizations.
 * Declarative code is easier to parallelize as execution order is not specified.
