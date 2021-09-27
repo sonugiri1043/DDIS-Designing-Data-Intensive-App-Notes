@@ -339,7 +339,7 @@ We focus on three concerns that are important in most software systems:
 * Typically, B-Trees are faster for reads and LSM-Trees are faster for writes. The actual performance for a specific system would require benchmarking.
 
 ### Advantages of LSM-trees
-* Both B-Tree and LSM-tree indexes would require writing a piece of data to disk multiple times on write. This effect is known as write amplification. In write heavy applications, write amplification would directly impact performance.
+* Both B-Tree and LSM-tree indexes would require writing a piece of data to disk multiple times on write. This effect is known as **write amplification**. In write heavy applications, write amplification would directly impact performance.
 * LSM-trees are typically able to sustain higher write throughput due to two main reasons: a lower write amplification and a sequential write (especially on magnetic hard drives).
 * LSM-trees can be compressed better and have lower fragmentation due to rewriting of SSTables.
 * Even on SSDs, LSM-trees are still advantages as it represents data more compactly and allows more read and write requests within the same bandwidth.
@@ -358,8 +358,8 @@ We focus on three concerns that are important in most software systems:
 ### Storing values within the index
 * In a key-value pair, the key is used to locate the entry and the value can be either the actual data or a reference to the storage location (known as a heap file). Using heap files is common for building multiple secondary indexes to reduce duplication.
 * When updating values without changing keys, if the new value is no larger than old data, the value can be directly overwritten, and if the new value is larger, either all indexes needs to be updated or a forwarding pointer can be left in the old record.
-* Sometimes, the extra hop to the heap file is too expensive for reads, and the indexed row is stored directly in the index. This is called a clustered index.
-* A compromise between a non-clustered index and a clustered index is a covering index or index with included columns, where only some columns are stored within the index.
+* Sometimes, the extra hop to the heap file is too expensive for reads, and the indexed row is stored directly in the index. This is called a **clustered index.**
+* A compromise between a non-clustered index and a clustered index is a **covering index** or index with included columns, where only some columns are stored within the index.
 
 ### Multi-column indexes
 * Multi-column indexes are created for querying rows using multiple columns of a table.
@@ -412,11 +412,6 @@ We focus on three concerns that are important in most software systems:
 * Column-oriented storage often lends itself to good compression.
 * Bitmap encoding of distinct values in a column can lead to good compression. Further, if the bitmap is sparse, we can use run-length encoding for more compression.
 * Bitmap indexes are good for “equal” and “contain” queries.
-
-#### Memory bandwidth and vectorized processing
-* Disk is not the only bottleneck. Bandwidth between memory and CPU, branch misprediction and bubbles in CPU instruction processing pipeline, and using SIMD instructions all could be points of optimization.
-* Column-oriented storage also uses CPU cycles efficiently, since the query engine can fit a chunk of compressed column data could fit into L1 cache and iterate it through a tight loop (without function calls).
-* Also, operators can be designed to operate on such chunks of data directly. This is called vectorized processing.
 
 ### Sort Order in Column Storage
 * Although storing column in insertion order is easy, we can choose to sort them based on what queries are common.
