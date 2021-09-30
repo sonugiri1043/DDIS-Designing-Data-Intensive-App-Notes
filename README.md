@@ -202,7 +202,7 @@ We focus on three concerns that are important in most software systems:
 * Declarative code is easier to parallelize as execution order is not specified.
 
 ### Declarative Queries on the Web
-* CSS and XSL are declarative languages to specify styling in HTML, while changing styles directly through Javascript is imperative.
+* CSS and XML are declarative languages to specify styling in HTML, while changing styles directly through Javascript is imperative.
 * Specifying styles using CSS is much better than changing styles directly using Javascript.
 
 ### MapReduce Querying
