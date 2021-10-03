@@ -473,50 +473,61 @@ We focus on three concerns that are important in most software systems:
 * Despite the flaws, XML, JSON, and CSV are good enough for many purposes as long as application developers agree on the format.
 
 #### Binary Encoding
-For bigdata, the efficiency of encoding can have a larger impact.
-Binary formats for JSON and XML have been developed but only adopted in niches.
-Those binary representation usually keep the data model unchanged and keeps field names within the encoded data.
-The book gave a MessagePack example where the data was compressed from 81 bytes to 61 bytes.
-Thrift and Protocol Buffers
-Thrift and Protocol Buffers (protobuf) require a schema for encoding and decoding. They have their own schema definition language, which can then be use to generate code for multiple languages.
-Since Thrift and Protocol Buffers encodes the schema in code, the encoding does not need the field names but only field tags (positive integers).
-Thrift has two binary encoding formats: BinaryProtocol and CompactProtocol. CompactProtocol packs field type and tag number into a single byte and uses variable length encoding for integers.
-Thrift and Protocol Buffers allow a field to be optional, yet the actual binary encoding does not have this information. The difference is only at run-time, where read a missing required field would result in an exception.
-Field tags and schema evolution
-Each field in Thrift and Protocol Buffers has a tag number and a data type. Since each field is identified only by the field tag, the name can be changed and the field tag number cannot be changed.
-For forward compatiblility, old code can simply skip the fields with unknown tags. For backward compatibility, as long as the newly added field is optional, new code can read data without the new optional field without throwing exceptions.
-Datatypes and schema evolution
-Changing datatypes is trickier. Changing a 64-bit integer to 32-bit integer would lose precision or get truncated.
-Protocol Buffers does not have a list or array datatype, but has a repeated marker for fields that can appear multiple times. It is okay to change an optional field into a repeated field. New code sees a list of zero or one elements; old code reading new data sees the last element in the list. Thrift does not have this flexibility.
-Arvo
-Arvo has two schema languages, one Arvo IDL for human editing and one JSON based that is more machine-readable.
-There are no tag numbers in the schema. The encoding is a concatenation of field values.
-The writer’s schema and the reader’s schema
-Arvo supports schema evolvability by keeping track of the writer’s schema and compare it with the reader’s schema.
-The reader’s and writer’s schema don’t have to be the same but only have to be compatible.
-Schema evolution rules
-To maintain compatibility, one can only add or remove a field with a default value.
-Note that Arvo does not allow nulls to be a default value unless a union type, which includes a null, is the type of the field. As a result, Arvo does not have optional and required.
-Changing the datatype is possible as long as Arvo can convert the type. Changing the name of the field is done by adding aliases of field names, so a new reader’s schema can match old writer’s schema. Note this is only backward compatible, not forward compatible.
-But what is the writer’s schema?
-Since it is inefficient to encode the writer’s schema with each data entry, how the writer’s schema is handled depends on the context.
-Storing many entries of the same schema: the writer’s schema can be written once at the beginning of the file.
-Database with individually written records: one can include a version number for each record and store a map of schema version to schema in a separate database.
-Sending data over a network: The schema can be negotiated during the connection setup time if the communication is bidirectional.
-A database of schema versions is a useful thing that can also be used as a documentation of the evolution history.
-Dynamically generated schemas
-Since Arvo does not use tags for fields, it is friendlier to dynamic generated schemas. No code generation is required when the schema changes. For example, if we have an application that dumps relational database contents to disk, we do not need to perform code generation a new schema every time the database adds a new field.
-Code generation and dynamically typed languages
-Code generation is more aligned with statically typed languages as it allows efficient in-memory structures to be used for decoded data, and it allows type checking and autocompletion in IDEs. However, for dynamically typed languages code generation becomes a burden, as they usually avoid an explicit compilation step.
-Arvo provides optional code generation for statically typed languages, but it can be used without any code generation as long as you have the writer’s schema. This is especially useful for working with dynamically typed data processing languages.
-The Merits of Schemas
-Compared to JSON, XML, and CSV, formats with a schema, such as Protocol Buffer, Thrift, and Arvo have the following good properties:
-They are simpler to implement.
-They are much more compact.
-The schema is a form of documentation.
-Keeping a database of schemas allows one to check forward and backward compatibility before anything is deployed.
-Automatic code generation for statically typed languages.
-Modes of Dataflow
+* For bigdata, the efficiency of encoding can have a larger impact.
+* Binary formats for JSON and XML have been developed but only adopted in niches.
+* Those binary representation usually keep the data model unchanged and keeps field names within the encoded data.
+* The book gave a MessagePack example where the data was compressed from 81 bytes to 61 bytes.
+
+### Thrift and Protocol Buffers
+* Thrift and Protocol Buffers (protobuf) require a schema for encoding and decoding. They have their own schema definition language, which can then be use to generate code for multiple languages.
+* Since Thrift and Protocol Buffers encodes the schema in code, the encoding does not need the field names but only field tags (positive integers).
+* Thrift has two binary encoding formats: BinaryProtocol and CompactProtocol. CompactProtocol packs field type and tag number into a single byte and uses variable length encoding for integers.
+* Thrift and Protocol Buffers allow a field to be optional, yet the actual binary encoding does not have this information. The difference is only at run-time, where read a missing required field would result in an exception.
+
+#### Field tags and schema evolution
+* Each field in Thrift and Protocol Buffers has a tag number and a data type. Since each field is identified only by the field tag, the name can be changed and the field tag number cannot be changed.
+* For forward compatiblility, old code can simply skip the fields with unknown tags. For backward compatibility, as long as the newly added field is optional, new code can read data without the new optional field without throwing exceptions.
+
+#### Datatypes and schema evolution
+* Changing datatypes is trickier. Changing a 64-bit integer to 32-bit integer would lose precision or get truncated.
+* Protocol Buffers does not have a list or array datatype, but has a repeated marker for fields that can appear multiple times. It is okay to change an optional field into a repeated field. New code sees a list of zero or one elements; old code reading new data sees the last element in the list. Thrift does not have this flexibility.
+
+### Arvo
+* Arvo has two schema languages, one Arvo IDL for human editing and one JSON based that is more machine-readable.
+* There are no tag numbers in the schema. The encoding is a concatenation of field values.
+
+#### The writer’s schema and the reader’s schema
+* Arvo supports schema evolvability by keeping track of the writer’s schema and compare it with the reader’s schema.
+* The reader’s and writer’s schema don’t have to be the same but only have to be compatible.
+
+#### Schema evolution rules
+* To maintain compatibility, one can only add or remove a field with a default value.
+* Note that Arvo does not allow nulls to be a default value unless a union type, which includes a null, is the type of the field. As a result, Arvo does not have optional and required.
+* Changing the datatype is possible as long as Arvo can convert the type. Changing the name of the field is done by adding aliases of field names, so a new reader’s schema can match old writer’s schema. Note this is only backward compatible, not forward compatible.
+
+#### But what is the writer’s schema?
+* Since it is inefficient to encode the writer’s schema with each data entry, how the writer’s schema is handled depends on the context.
+  * Storing many entries of the same schema: the writer’s schema can be written once at the beginning of the file.
+  * Database with individually written records: one can include a version number for each record and store a map of schema version to schema in a separate database.
+  * Sending data over a network: The schema can be negotiated during the connection setup time if the communication is bidirectional.
+* A database of schema versions is a useful thing that can also be used as a documentation of the evolution history.
+
+#### Dynamically generated schemas
+* Since Arvo does not use tags for fields, it is friendlier to dynamic generated schemas. No code generation is required when the schema changes. For example, if we have an application that dumps relational database contents to disk, we do not need to perform code generation a new schema every time the database adds a new field.
+
+#### Code generation and dynamically typed languages
+* Code generation is more aligned with statically typed languages as it allows efficient in-memory structures to be used for decoded data, and it allows type checking and autocompletion in IDEs. However, for dynamically typed languages code generation becomes a burden, as they usually avoid an explicit compilation step.
+* Arvo provides optional code generation for statically typed languages, but it can be used without any code generation as long as you have the writer’s schema. This is especially useful for working with dynamically typed data processing languages.
+
+### The Merits of Schemas
+* Compared to JSON, XML, and CSV, formats with a schema, such as Protocol Buffer, Thrift, and Arvo have the following good properties:
+  * They are simpler to implement.
+  * They are much more compact.
+  * The schema is a form of documentation.
+  * Keeping a database of schemas allows one to check forward and backward compatibility before anything is deployed.
+  * Automatic code generation for statically typed languages.
+
+## Modes of Dataflow
 The most common ways of how data flows between applications are:
 through database,
 through service calls,
