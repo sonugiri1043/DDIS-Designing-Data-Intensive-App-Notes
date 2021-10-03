@@ -541,8 +541,9 @@ We focus on three concerns that are important in most software systems:
 
 #### Different values written at different times
 * Databases may persist data for years, and it is common that **data outlives code**.
-* Rewriting (migrating) data to a new schema while possible is expensive. Some relational database allows filling nulls as values for new columns.
+* Rewriting (migrating) is expensive, most relational databases allow simple schema changes, such as adding a new column with a null default value without rewriting existing data. When an old row is read, the database fills in nulls for any columns that are missing.
 * Schema evolution allows the entire database to appear as if it was encoded with a single schema, even if the binary format was encoded with different versions of the schema.
+* Avro has sophisticated schema evolution rules that can allow a database to appear as if was encoded with a single schema, even though the underlying storage may contain records encoded with previous schema versions.
 
 #### Archival storage
 * When taking a snapshot or dumping data into a data warehouse, one can encode all data in the latest schema.
@@ -552,8 +553,8 @@ We focus on three concerns that are important in most software systems:
 * HTTP is the transport protocol and is independent of the server-client agreement of the API.
 * A few examples of clients:
   * Web browsers retrieves data using HTTP GET requests and submits data through HTTP POST requests.
-  * A native application could also make requests to a server and a client-side JavaScript application can use XMLHttpRequest to become an HTTP client (Ajax). In    this case the response is usually not human readable but for further processing by the client.
-  * A server can be a client of another service. Breaking down a monolithic service into smaller services is referred to as the microservices architecture or service-oriented architecture.
+  * A native application could also make requests to a server and a client-side JavaScript application can use XMLHttpRequest to become an HTTP client (Ajax). In this case the response is usually not human readable but for further processing by the client.
+  * A server can be a client of another service. Breaking down a monolithic service into smaller services is referred to as the **microservices architecture** or **service-oriented architecture**.
 * The goal for microservices architecture is to make each subservice independently deployable and evolvable. Therefore, we will need both forward and backward compatibility for the binary encodings of data.
 
 #### Web services
