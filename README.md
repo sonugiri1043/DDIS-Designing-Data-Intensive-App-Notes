@@ -4,7 +4,7 @@
 1. [Chapter 1: Reliable, Scalable, and Maintainable Applications](#chapter1)
 2. [Chapter 2: Data Model and Query Languages](#chapter2)
 3. [Chapter 3: Storage and retrieval](#chapter3)
-4. [Chapter 3: Encoding and Evolution](#chapter4)
+4. [Chapter 4: Encoding and Evolution](#chapter4)
 
 * We call an application data-intensive if data is its primary challenge - the quantity of data, the complexity of data, or the speed at which it is changing - as opposed to compute-intensive, where CPU cycles are the bottleneck.
 
@@ -438,39 +438,41 @@ We focus on three concerns that are important in most software systems:
 
 ---
 # Chapter 4: Encoding and Evolution <a name="chapter4"></a>
-Introduction
-Evolvability is important for maintainability in the long term, as applications inevitably change over time.
-Relational databases ensures all data conforms to the same format. The schema can be changed, but there is always only one schema.
-Schema-on-read databases can contain data a mix of data with older and newer formats.
-For larger applications, schema updates often cannot happen at the same time:
-Server side application can perform rolling-upgrade: a few nodes are updated at a time. No service downtime required.
-Client side application depends entirely on the user.
-This means old and new versions of the code and data may exist at the same time.
-We define backward compatibility as: newer code can read data written by older code. This is usually easier.
-We define forward compatibility as: older code can read data written by newer code. This could be tricker.
-Formats for Encoding Data
-Data usually are in one the following two representation:
-In memory, data is kept in objects, structs, list, arrays, hash tables, trees, etc. Those data structures are optimized for efficient access and manipulation.
-When data is written to a file or sent over the network, data are encoded into a sequence of bytes.
-Translating from in-memory representation to a byte sequence is called encoding, serialization, or marshalling. The revers is called decoding, parsing, deserialization, unmarshalling. This book uses the terms encoding and decoding.
-Language-Specific Formats
-Although language-specific formats comes with built-in support and are convenient, they have a few issues.
-Encoding is tied to a specific programming language, and cross-language reads are difficult. Migration to another language could be very expensive.
-Decoding needs to be able to instantiating arbitrary classes, which could be a security problem.
-Versioning is often an afterthought, and forward and backward compatibility is generally overlooked.
-Efficiency is often an afterthought.
-TLDR. Don’t use them.
-JSON, XML, and Binary Formats
-JSON, XML, CSV are textual formats and somewhat human readable, yet they have the following problems:
-There is a lot of ambiguity around encoding of numbers. In XML and CSV, a numeric string and a number are the same. JSON doesn’t distinguish integers and floating-point numbers. Also, integers greater than 
-2
-53
- cannot be exactly represented by a IEEE 754 double-precision floating-point number.
-JSON and XML support Unicode character strings well but they don’t support binary strings.
-While there is schema support for XML and JSON, many JSON-based tools don’t use schemas. Applications that don’t use schemas need to hardcode the encoding and decoding logic.
-CSV does not have a schema, so encoding and decoding logic will have to be hardcoded. Also, not all CSV parsers handles escaping rules correctly.
-Despite the flaws, XML, JSON, and CSV are good enough for many purposes as long as application developers agree on the format.
-Binary Encoding
+
+## Overview
+* Evolvability is important for maintainability in the long term, as applications inevitably change over time.
+* Relational databases ensures all data conforms to the same format. The schema can be changed, but there is always only one schema.
+* Schema-on-read databases can contain data a mix of data with older and newer formats.
+* For larger applications, schema updates often cannot happen at the same time:
+  * Server side application can perform rolling-upgrade: a few nodes are updated at a time. No service downtime required.
+  * Client side application depends entirely on the user.
+* This means old and new versions of the code and data may exist at the same time.
+* We define **backward compatibility** as: newer code can read data written by older code. This is usually easier.
+* We define **forward compatibility** as: older code can read data written by newer code. This could be tricker.
+
+## Formats for Encoding Data
+* Data usually are in one the following two representation:
+  * In memory, data is kept in objects, structs, list, arrays, hash tables, trees, etc. Those data structures are optimized for efficient access and manipulation.
+  * When data is written to a file or sent over the network, data are encoded into a sequence of bytes.
+* Translating from in-memory representation to a byte sequence is called encoding, **serialization**, or **marshalling**. The revers is called decoding, parsing, deserialization, unmarshalling. This book uses the terms encoding and decoding.
+
+### Language-Specific Formats
+* Java has Serializable, Ruby has Marshal, python has pikle and so on. Although language-specific formats comes with built-in support and are convenient, they have a few issues. 
+  * Encoding is tied to a specific programming language, and cross-language reads are difficult. Migration to another language could be very expensive.
+  * Decoding needs to be able to instantiating arbitrary classes, which could be a security problem.
+  * Versioning is often an afterthought, and forward and backward compatibility is generally overlooked.
+  * Efficiency is often an afterthought. Java's serialization is notorious for bad performance and bloated encoding.
+* TLDR. Don’t use them.
+
+### JSON, XML, and Binary Formats
+* JSON, XML, CSV are textual formats and somewhat human readable, yet they have the following problems:
+  * There is a lot of ambiguity around encoding of numbers. In XML and CSV, a numeric string and a number are the same. JSON doesn’t distinguish integers and floating-point numbers. Also, integers greater than  2^53  cannot be exactly represented by a IEEE 754 double-precision floating-point number.
+  * JSON and XML support Unicode character strings well but they don’t support binary strings.
+  * While there is schema support for XML and JSON, many JSON-based tools don’t use schemas. Applications that don’t use schemas need to hardcode the encoding and decoding logic.
+  * CSV does not have a schema, so encoding and decoding logic will have to be hardcoded. Also, not all CSV parsers handles escaping rules correctly.
+* Despite the flaws, XML, JSON, and CSV are good enough for many purposes as long as application developers agree on the format.
+
+#### Binary Encoding
 For bigdata, the efficiency of encoding can have a larger impact.
 Binary formats for JSON and XML have been developed but only adopted in niches.
 Those binary representation usually keep the data model unchanged and keeps field names within the encoded data.
