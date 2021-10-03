@@ -476,13 +476,20 @@ We focus on three concerns that are important in most software systems:
 * For bigdata, the efficiency of encoding can have a larger impact.
 * Binary formats for JSON and XML have been developed but only adopted in niches.
 * Those binary representation usually keep the data model unchanged and keeps field names within the encoded data.
+![Example 4-1](images/ex-4-1.png)
 * The book gave a MessagePack example where the data was compressed from 81 bytes to 61 bytes.
+![Figure 4-1](images/fig-4-1.png)
 
 ### Thrift and Protocol Buffers
 * Thrift and Protocol Buffers (protobuf) require a schema for encoding and decoding. They have their own schema definition language, which can then be use to generate code for multiple languages.
+![Example 4-2](images/ex-4-2.png)
+![Example 4-2](images/ex-4-4.png)
 * Since Thrift and Protocol Buffers encodes the schema in code, the encoding does not need the field names but only field tags (positive integers).
 * Thrift has two binary encoding formats: BinaryProtocol and CompactProtocol. CompactProtocol packs field type and tag number into a single byte and uses variable length encoding for integers.
 * Thrift and Protocol Buffers allow a field to be optional, yet the actual binary encoding does not have this information. The difference is only at run-time, where read a missing required field would result in an exception.
+
+![Figure 4-2](images/fig-4-2.png)
+![Figure 4-2](images/fig-4-4.png)
 
 #### Field tags and schema evolution
 * Each field in Thrift and Protocol Buffers has a tag number and a data type. Since each field is identified only by the field tag, the name can be changed and the field tag number cannot be changed.
@@ -496,6 +503,10 @@ We focus on three concerns that are important in most software systems:
 * Arvo has two schema languages, one Arvo IDL for human editing and one JSON based that is more machine-readable.
 * There are no tag numbers in the schema. The encoding is a concatenation of field values.
 
+![ex 4-5](images/ex-4-5.png)
+
+![Figure 4-5](images/fig-4-5.png)
+
 #### The writer’s schema and the reader’s schema
 * Arvo supports schema evolvability by keeping track of the writer’s schema and compare it with the reader’s schema.
 * The reader’s and writer’s schema don’t have to be the same but only have to be compatible.
@@ -504,6 +515,8 @@ We focus on three concerns that are important in most software systems:
 * To maintain compatibility, one can only add or remove a field with a default value.
 * Note that Arvo does not allow nulls to be a default value unless a union type, which includes a null, is the type of the field. As a result, Arvo does not have optional and required.
 * Changing the datatype is possible as long as Arvo can convert the type. Changing the name of the field is done by adding aliases of field names, so a new reader’s schema can match old writer’s schema. Note this is only backward compatible, not forward compatible.
+
+![Figure 4-6](images/fig-4-6.png)
 
 #### But what is the writer’s schema?
 * Since it is inefficient to encode the writer’s schema with each data entry, how the writer’s schema is handled depends on the context.
@@ -538,6 +551,8 @@ We focus on three concerns that are important in most software systems:
 * A process that writes to a database encodes the data, and a process that reads data from a database decodes the data.
 * Both backward and forward compatibility are required here.
 * An old process reading and writing a record of new data will need to preserve the unknown fields.
+
+![Figure 4-7](images/fig-4-7.png)
 
 #### Different values written at different times
 * Databases may persist data for years, and it is common that **data outlives code**.
