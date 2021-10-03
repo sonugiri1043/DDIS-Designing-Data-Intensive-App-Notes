@@ -6,7 +6,7 @@
 3. [Chapter 3: Storage and retrieval](#chapter3)
 4. [Chapter 4: Encoding and Evolution](#chapter4)
 
-* We call an application data-intensive if data is its primary challenge - the quantity of data, the complexity of data, or the speed at which it is changing - as opposed to compute-intensive, where CPU cycles are the bottleneck.
+We call an application data-intensive if data is its primary challenge - the quantity of data, the complexity of data, or the speed at which it is changing - as opposed to compute-intensive, where CPU cycles are the bottleneck.
 
 ---
 
@@ -528,72 +528,83 @@ We focus on three concerns that are important in most software systems:
   * Automatic code generation for statically typed languages.
 
 ## Modes of Dataflow
-The most common ways of how data flows between applications are:
-through database,
-through service calls,
-and through asynchronous message passing.
-Dataflow Through Databases
-Data can be sent from one application to a different application or the application’s future self through databases.
-A process that writes to a database encodes the data, and a process that reads data from a database decodes the data.
-Both backward and forward compatibility are required here.
-An old process reading and writing a record of new data will need to preserve the unknown fields.
-Different values written at different times
-Databases may persist data for years, and it is common that data outlives code.
-Rewriting (migrating) data to a new schema while possible is expensive. Some relational database allows filling nulls as values for new columns.
-Schema evolution allows the entire database to appear as if it was encoded with a single schema, even if the binary format was encoded with different versions of the schema.
-Archival storage
-When taking a snapshot or dumping data into a data warehouse, one can encode all data in the latest schema.
-Dataflow Through Services: REST and RPC
-Data can be sent from a one application (client) to another application (server) through network over the API (service) the server exposes.
-HTTP is the transport protocol and is independent of the server-client agreement of the API.
-A few examples of clients:
-Web browsers retrieves data using HTTP GET requests and submits data through HTTP POST requests.
-A native application could also make requests to a server and a client-side JavaScript application can use XMLHttpRequest to become an HTTP client (Ajax). In this case the response is usually not human readable but for further processing by the client.
-A server can be a client of another service. Breaking down a monolithic service into smaller services is referred to as the microservices architecture or service-oriented architecture.
-The goal for microservices architecture is to make each subservice independently deployable and evolvable. Therefore, we will need both forward and backward compatibility for the binary encodings of data.
-Web services
-When HTTP is used as the protocol for talking to the service, it is called a web service, for example:
-A client application making requests to a service over HTTP over public internet.
-A service making requests to services within the same organization. Software that supports such services is sometimes called middleware.)
-A service making requests to services owned by a different organization.
-There are two approaches for designing the API for web services REST and SOAP.
-REST uses simple data formats, URLs for identifying resources, and HTTP features for cache control, authentication and content type negotiation. APIs designed based on REST principles are called RESTful.
-SOAP is a XML-based protocol. While it uses HTTP, it avoids using HTTP features. SOAP APIs are described using Web Services Description Language (WSDL), which enables code generation. WSDL is complicated and requires tool support for constructing requests manually.
-REST has been gaining popularity.
-The problems with remote procedure calls (RPCs)
-The RPC model treats a request to a remote network service the same as a calling a function within the same process (this is called location transparency.) This approach has the following issues:
-A network request is more unpredictable than a local function call.
-A local function call returns a result, throws an exception, or never returns, but a network call may return without a result, due to a timeout.
-Retrying a failed network request is not the right solution, as the request could have gone through, but the response was lost.
-The run time for the function is unpredictable.
-Passing references to objects in local memory requires encoding the whole object and could be expensive for large objects.
-The client and server may be implemented in different languages, so the framework must handle the datatype translations.
-Current directions for RPC
-The new generation of RPC frameworks is more explicit about the fact that a remote call is different from a local call, e.g., Finagle and Rest.li use futures (promises) to encapsulate asynchronous actions that may fail. Some of those frameworks provide service discovery to allow clients to find out which IP address and port number it can find a particular service.
-Custom RPC protocols with binary encoding can achieve better performance than JSON over REST, but RESTful APIs are easier to test and is supported by all mainstream programming languages.
-Data encoding and evolution for RPC
-We can assume the server will always be updated before the clients, so we only need backward compatibility on requests and forward compatibility on responses.
-The compatibilities of a RPC scheme are directly inherited by the binary encoding scheme it uses.
-RESTful APIs usually uses JSON for responses or URI-encoded/form-encoded for requests. Therefore, adding optional new request parameters or response fields maintains compatible.
-For public APIs, the provider has no control over its clients and will have to maintain them for a long time.
-There is no agreement on how API versioning should work. For RESTful APIs, common approaches are to use a version number in the URL or in the HTTP Accept header.
-Message-Passing Dataflow
-Asynchronous message-passing systems are somewhere between RPC and databases. Data is sent from a process to another process with low latency through a message broker, which stores the message temporarily.
-Using a message broker, compare to direct RPC, the advantages are:
-It can act as a buffer to improve reliability.
-It can redeliver messages to a process that has crashed.
-The sender does not need to know the IP or port of the recipient.
-It allows one message to be sent to multiple receivers.
-It decouples the sender and receiver.
-The communication is one-way and asynchronous. The sender doesn’t wait for the response from the receiver.
-Message brokers
-Message brokers are used as follows. The producer sends a message to a named queue or topic, and the broker ensures the message is delivered to the consumers or subscribers of that queue or topic. There could be many producers and consumers on the same topic.
-Ideally the messages should be encoded by a forward and backward compatible scheme. If a consumer republishes a message to another topic, it may need to preserve unknown fields.
-Distributed actor frameworks
-The actor model is a programming model for concurrency in a single process. Each actor may have its own state and communicates with other actors through sending and receiving asynchronous messages.
-In distributed actor frameworks, the actor model is used to scale an application across multiple nodes. The same message-passing mechanism is used.
-Location transparency works better in the actor model than RPC, since the model already assumes the messages could be lost.
-Three popular distributed actor frameworks: Akka, Orleans, Erlang OPT.
+* The most common ways of how data flows between applications are:
+  * through database,
+  * through service calls,
+  * and through asynchronous message passing.
+
+### Dataflow Through Databases
+* Data can be sent from one application to a different application or the application’s future self through databases.
+* A process that writes to a database encodes the data, and a process that reads data from a database decodes the data.
+* Both backward and forward compatibility are required here.
+* An old process reading and writing a record of new data will need to preserve the unknown fields.
+
+#### Different values written at different times
+* Databases may persist data for years, and it is common that **data outlives code**.
+* Rewriting (migrating) data to a new schema while possible is expensive. Some relational database allows filling nulls as values for new columns.
+* Schema evolution allows the entire database to appear as if it was encoded with a single schema, even if the binary format was encoded with different versions of the schema.
+
+#### Archival storage
+* When taking a snapshot or dumping data into a data warehouse, one can encode all data in the latest schema.
+
+### Dataflow Through Services: REST and RPC
+* Data can be sent from a one application (client) to another application (server) through network over the API (service) the server exposes.
+* HTTP is the transport protocol and is independent of the server-client agreement of the API.
+* A few examples of clients:
+  * Web browsers retrieves data using HTTP GET requests and submits data through HTTP POST requests.
+  * A native application could also make requests to a server and a client-side JavaScript application can use XMLHttpRequest to become an HTTP client (Ajax). In    this case the response is usually not human readable but for further processing by the client.
+  * A server can be a client of another service. Breaking down a monolithic service into smaller services is referred to as the microservices architecture or service-oriented architecture.
+* The goal for microservices architecture is to make each subservice independently deployable and evolvable. Therefore, we will need both forward and backward compatibility for the binary encodings of data.
+
+#### Web services
+* When HTTP is used as the protocol for talking to the service, it is called a web service, for example:
+  * A client application making requests to a service over HTTP over public internet.
+  * A service making requests to services within the same organization. Software that supports such services is sometimes called middleware.)
+  * A service making requests to services owned by a different organization.
+* There are two approaches for designing the API for web services REST and SOAP.
+* REST uses simple data formats, URLs for identifying resources, and HTTP features for cache control, authentication and content type negotiation. APIs designed based on REST principles are called RESTful.
+* SOAP is a XML-based protocol. While it uses HTTP, it avoids using HTTP features. SOAP APIs are described using Web Services Description Language (WSDL), which enables code generation. WSDL is complicated and requires tool support for constructing requests manually.
+* REST has been gaining popularity.
+
+#### The problems with remote procedure calls (RPCs)
+* The RPC model treats a request to a remote network service the same as a calling a function within the same process (this is called location transparency.) This approach has the following issues:
+  * A network request is more unpredictable than a local function call.
+  * A local function call returns a result, throws an exception, or never returns, but a network call may return without a result, due to a timeout.
+  * Retrying a failed network request is not the right solution, as the request could have gone through, but the response was lost.
+  * The run time for the function is unpredictable.
+  * Passing references to objects in local memory requires encoding the whole object and could be expensive for large objects.
+  * The client and server may be implemented in different languages, so the framework must handle the datatype translations.
+
+#### Current directions for RPC
+* The new generation of RPC frameworks is more explicit about the fact that a remote call is different from a local call, e.g., Finagle and Rest.li use futures (promises) to encapsulate asynchronous actions that may fail. Some of those frameworks provide service discovery to allow clients to find out which IP address and port number it can find a particular service.
+* Custom RPC protocols with binary encoding can achieve better performance than JSON over REST, but RESTful APIs are easier to test and is supported by all mainstream programming languages.
+
+#### Data encoding and evolution for RPC
+* We can assume the server will always be updated before the clients, so we only need backward compatibility on requests and forward compatibility on responses.
+* The compatibilities of a RPC scheme are directly inherited by the binary encoding scheme it uses.
+* RESTful APIs usually uses JSON for responses or URI-encoded/form-encoded for requests. Therefore, adding optional new request parameters or response fields maintains compatible.
+* For public APIs, the provider has no control over its clients and will have to maintain them for a long time.
+* There is no agreement on how API versioning should work. For RESTful APIs, common approaches are to use a version number in the URL or in the HTTP Accept header.
+
+### Message-Passing Dataflow
+* Asynchronous message-passing systems are somewhere between RPC and databases. Data is sent from a process to another process with low latency through a message broker, which stores the message temporarily.
+* Using a message broker, compare to direct RPC, the advantages are:
+  * It can act as a buffer to improve reliability.
+  * It can redeliver messages to a process that has crashed.
+  * The sender does not need to know the IP or port of the recipient.
+  * It allows one message to be sent to multiple receivers.
+  * It decouples the sender and receiver.
+* The communication is one-way and asynchronous. The sender doesn’t wait for the response from the receiver.
+
+#### Message brokers
+* Message brokers are used as follows. The producer sends a message to a named queue or topic, and the broker ensures the message is delivered to the consumers or subscribers of that queue or topic. There could be many producers and consumers on the same topic.
+* Ideally the messages should be encoded by a forward and backward compatible scheme. If a consumer republishes a message to another topic, it may need to preserve unknown fields.
+
+#### Distributed actor frameworks
+* The actor model is a programming model for concurrency in a single process. Each actor may have its own state and communicates with other actors through sending and receiving asynchronous messages.
+* In distributed actor frameworks, the actor model is used to scale an application across multiple nodes. The same message-passing mechanism is used.
+* Location transparency works better in the actor model than RPC, since the model already assumes the messages could be lost.
+* Three popular distributed actor frameworks: Akka, Orleans, Erlang OPT.
 
 Summarised from DDIS:https://github.com/Yang-Yanxiang/Designing-Data-Intensive-Applications 
 Other Ref: https://aweather.github.io/software-engineering
