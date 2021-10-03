@@ -4,8 +4,11 @@
 1. [Chapter 1: Reliable, Scalable, and Maintainable Applications](#chapter1)
 2. [Chapter 2: Data Model and Query Languages](#chapter2)
 3. [Chapter 3: Storage and retrieval](#chapter3)
+4. [Chapter 3: Encoding and Evolution](#chapter4)
 
 * We call an application data-intensive if data is its primary challenge - the quantity of data, the complexity of data, or the speed at which it is changing - as opposed to compute-intensive, where CPU cycles are the bottleneck.
+
+---
 
 # Chapter 1: Reliable, Scalable, and Maintainable Applications <a name="chapter1"></a>
 
@@ -433,6 +436,151 @@ We focus on three concerns that are important in most software systems:
 * Updating materialized view, when data changes, is expensive, and therefore materialized views are not used in OLTP systems often.
 * A common special case of materialized view is a data cube or OLAP cube, where data is pre-summarized over each dimension. This enables fast queries with precomputed queries, yet a data cube may not have the flexibility as raw data.
 
+---
+# Chapter 4: Encoding and Evolution <a name="chapter4"></a>
+Introduction
+Evolvability is important for maintainability in the long term, as applications inevitably change over time.
+Relational databases ensures all data conforms to the same format. The schema can be changed, but there is always only one schema.
+Schema-on-read databases can contain data a mix of data with older and newer formats.
+For larger applications, schema updates often cannot happen at the same time:
+Server side application can perform rolling-upgrade: a few nodes are updated at a time. No service downtime required.
+Client side application depends entirely on the user.
+This means old and new versions of the code and data may exist at the same time.
+We define backward compatibility as: newer code can read data written by older code. This is usually easier.
+We define forward compatibility as: older code can read data written by newer code. This could be tricker.
+Formats for Encoding Data
+Data usually are in one the following two representation:
+In memory, data is kept in objects, structs, list, arrays, hash tables, trees, etc. Those data structures are optimized for efficient access and manipulation.
+When data is written to a file or sent over the network, data are encoded into a sequence of bytes.
+Translating from in-memory representation to a byte sequence is called encoding, serialization, or marshalling. The revers is called decoding, parsing, deserialization, unmarshalling. This book uses the terms encoding and decoding.
+Language-Specific Formats
+Although language-specific formats comes with built-in support and are convenient, they have a few issues.
+Encoding is tied to a specific programming language, and cross-language reads are difficult. Migration to another language could be very expensive.
+Decoding needs to be able to instantiating arbitrary classes, which could be a security problem.
+Versioning is often an afterthought, and forward and backward compatibility is generally overlooked.
+Efficiency is often an afterthought.
+TLDR. Don’t use them.
+JSON, XML, and Binary Formats
+JSON, XML, CSV are textual formats and somewhat human readable, yet they have the following problems:
+There is a lot of ambiguity around encoding of numbers. In XML and CSV, a numeric string and a number are the same. JSON doesn’t distinguish integers and floating-point numbers. Also, integers greater than 
+2
+53
+ cannot be exactly represented by a IEEE 754 double-precision floating-point number.
+JSON and XML support Unicode character strings well but they don’t support binary strings.
+While there is schema support for XML and JSON, many JSON-based tools don’t use schemas. Applications that don’t use schemas need to hardcode the encoding and decoding logic.
+CSV does not have a schema, so encoding and decoding logic will have to be hardcoded. Also, not all CSV parsers handles escaping rules correctly.
+Despite the flaws, XML, JSON, and CSV are good enough for many purposes as long as application developers agree on the format.
+Binary Encoding
+For bigdata, the efficiency of encoding can have a larger impact.
+Binary formats for JSON and XML have been developed but only adopted in niches.
+Those binary representation usually keep the data model unchanged and keeps field names within the encoded data.
+The book gave a MessagePack example where the data was compressed from 81 bytes to 61 bytes.
+Thrift and Protocol Buffers
+Thrift and Protocol Buffers (protobuf) require a schema for encoding and decoding. They have their own schema definition language, which can then be use to generate code for multiple languages.
+Since Thrift and Protocol Buffers encodes the schema in code, the encoding does not need the field names but only field tags (positive integers).
+Thrift has two binary encoding formats: BinaryProtocol and CompactProtocol. CompactProtocol packs field type and tag number into a single byte and uses variable length encoding for integers.
+Thrift and Protocol Buffers allow a field to be optional, yet the actual binary encoding does not have this information. The difference is only at run-time, where read a missing required field would result in an exception.
+Field tags and schema evolution
+Each field in Thrift and Protocol Buffers has a tag number and a data type. Since each field is identified only by the field tag, the name can be changed and the field tag number cannot be changed.
+For forward compatiblility, old code can simply skip the fields with unknown tags. For backward compatibility, as long as the newly added field is optional, new code can read data without the new optional field without throwing exceptions.
+Datatypes and schema evolution
+Changing datatypes is trickier. Changing a 64-bit integer to 32-bit integer would lose precision or get truncated.
+Protocol Buffers does not have a list or array datatype, but has a repeated marker for fields that can appear multiple times. It is okay to change an optional field into a repeated field. New code sees a list of zero or one elements; old code reading new data sees the last element in the list. Thrift does not have this flexibility.
+Arvo
+Arvo has two schema languages, one Arvo IDL for human editing and one JSON based that is more machine-readable.
+There are no tag numbers in the schema. The encoding is a concatenation of field values.
+The writer’s schema and the reader’s schema
+Arvo supports schema evolvability by keeping track of the writer’s schema and compare it with the reader’s schema.
+The reader’s and writer’s schema don’t have to be the same but only have to be compatible.
+Schema evolution rules
+To maintain compatibility, one can only add or remove a field with a default value.
+Note that Arvo does not allow nulls to be a default value unless a union type, which includes a null, is the type of the field. As a result, Arvo does not have optional and required.
+Changing the datatype is possible as long as Arvo can convert the type. Changing the name of the field is done by adding aliases of field names, so a new reader’s schema can match old writer’s schema. Note this is only backward compatible, not forward compatible.
+But what is the writer’s schema?
+Since it is inefficient to encode the writer’s schema with each data entry, how the writer’s schema is handled depends on the context.
+Storing many entries of the same schema: the writer’s schema can be written once at the beginning of the file.
+Database with individually written records: one can include a version number for each record and store a map of schema version to schema in a separate database.
+Sending data over a network: The schema can be negotiated during the connection setup time if the communication is bidirectional.
+A database of schema versions is a useful thing that can also be used as a documentation of the evolution history.
+Dynamically generated schemas
+Since Arvo does not use tags for fields, it is friendlier to dynamic generated schemas. No code generation is required when the schema changes. For example, if we have an application that dumps relational database contents to disk, we do not need to perform code generation a new schema every time the database adds a new field.
+Code generation and dynamically typed languages
+Code generation is more aligned with statically typed languages as it allows efficient in-memory structures to be used for decoded data, and it allows type checking and autocompletion in IDEs. However, for dynamically typed languages code generation becomes a burden, as they usually avoid an explicit compilation step.
+Arvo provides optional code generation for statically typed languages, but it can be used without any code generation as long as you have the writer’s schema. This is especially useful for working with dynamically typed data processing languages.
+The Merits of Schemas
+Compared to JSON, XML, and CSV, formats with a schema, such as Protocol Buffer, Thrift, and Arvo have the following good properties:
+They are simpler to implement.
+They are much more compact.
+The schema is a form of documentation.
+Keeping a database of schemas allows one to check forward and backward compatibility before anything is deployed.
+Automatic code generation for statically typed languages.
+Modes of Dataflow
+The most common ways of how data flows between applications are:
+through database,
+through service calls,
+and through asynchronous message passing.
+Dataflow Through Databases
+Data can be sent from one application to a different application or the application’s future self through databases.
+A process that writes to a database encodes the data, and a process that reads data from a database decodes the data.
+Both backward and forward compatibility are required here.
+An old process reading and writing a record of new data will need to preserve the unknown fields.
+Different values written at different times
+Databases may persist data for years, and it is common that data outlives code.
+Rewriting (migrating) data to a new schema while possible is expensive. Some relational database allows filling nulls as values for new columns.
+Schema evolution allows the entire database to appear as if it was encoded with a single schema, even if the binary format was encoded with different versions of the schema.
+Archival storage
+When taking a snapshot or dumping data into a data warehouse, one can encode all data in the latest schema.
+Dataflow Through Services: REST and RPC
+Data can be sent from a one application (client) to another application (server) through network over the API (service) the server exposes.
+HTTP is the transport protocol and is independent of the server-client agreement of the API.
+A few examples of clients:
+Web browsers retrieves data using HTTP GET requests and submits data through HTTP POST requests.
+A native application could also make requests to a server and a client-side JavaScript application can use XMLHttpRequest to become an HTTP client (Ajax). In this case the response is usually not human readable but for further processing by the client.
+A server can be a client of another service. Breaking down a monolithic service into smaller services is referred to as the microservices architecture or service-oriented architecture.
+The goal for microservices architecture is to make each subservice independently deployable and evolvable. Therefore, we will need both forward and backward compatibility for the binary encodings of data.
+Web services
+When HTTP is used as the protocol for talking to the service, it is called a web service, for example:
+A client application making requests to a service over HTTP over public internet.
+A service making requests to services within the same organization. Software that supports such services is sometimes called middleware.)
+A service making requests to services owned by a different organization.
+There are two approaches for designing the API for web services REST and SOAP.
+REST uses simple data formats, URLs for identifying resources, and HTTP features for cache control, authentication and content type negotiation. APIs designed based on REST principles are called RESTful.
+SOAP is a XML-based protocol. While it uses HTTP, it avoids using HTTP features. SOAP APIs are described using Web Services Description Language (WSDL), which enables code generation. WSDL is complicated and requires tool support for constructing requests manually.
+REST has been gaining popularity.
+The problems with remote procedure calls (RPCs)
+The RPC model treats a request to a remote network service the same as a calling a function within the same process (this is called location transparency.) This approach has the following issues:
+A network request is more unpredictable than a local function call.
+A local function call returns a result, throws an exception, or never returns, but a network call may return without a result, due to a timeout.
+Retrying a failed network request is not the right solution, as the request could have gone through, but the response was lost.
+The run time for the function is unpredictable.
+Passing references to objects in local memory requires encoding the whole object and could be expensive for large objects.
+The client and server may be implemented in different languages, so the framework must handle the datatype translations.
+Current directions for RPC
+The new generation of RPC frameworks is more explicit about the fact that a remote call is different from a local call, e.g., Finagle and Rest.li use futures (promises) to encapsulate asynchronous actions that may fail. Some of those frameworks provide service discovery to allow clients to find out which IP address and port number it can find a particular service.
+Custom RPC protocols with binary encoding can achieve better performance than JSON over REST, but RESTful APIs are easier to test and is supported by all mainstream programming languages.
+Data encoding and evolution for RPC
+We can assume the server will always be updated before the clients, so we only need backward compatibility on requests and forward compatibility on responses.
+The compatibilities of a RPC scheme are directly inherited by the binary encoding scheme it uses.
+RESTful APIs usually uses JSON for responses or URI-encoded/form-encoded for requests. Therefore, adding optional new request parameters or response fields maintains compatible.
+For public APIs, the provider has no control over its clients and will have to maintain them for a long time.
+There is no agreement on how API versioning should work. For RESTful APIs, common approaches are to use a version number in the URL or in the HTTP Accept header.
+Message-Passing Dataflow
+Asynchronous message-passing systems are somewhere between RPC and databases. Data is sent from a process to another process with low latency through a message broker, which stores the message temporarily.
+Using a message broker, compare to direct RPC, the advantages are:
+It can act as a buffer to improve reliability.
+It can redeliver messages to a process that has crashed.
+The sender does not need to know the IP or port of the recipient.
+It allows one message to be sent to multiple receivers.
+It decouples the sender and receiver.
+The communication is one-way and asynchronous. The sender doesn’t wait for the response from the receiver.
+Message brokers
+Message brokers are used as follows. The producer sends a message to a named queue or topic, and the broker ensures the message is delivered to the consumers or subscribers of that queue or topic. There could be many producers and consumers on the same topic.
+Ideally the messages should be encoded by a forward and backward compatible scheme. If a consumer republishes a message to another topic, it may need to preserve unknown fields.
+Distributed actor frameworks
+The actor model is a programming model for concurrency in a single process. Each actor may have its own state and communicates with other actors through sending and receiving asynchronous messages.
+In distributed actor frameworks, the actor model is used to scale an application across multiple nodes. The same message-passing mechanism is used.
+Location transparency works better in the actor model than RPC, since the model already assumes the messages could be lost.
+Three popular distributed actor frameworks: Akka, Orleans, Erlang OPT.
 
-DDIS Pdf:https://github.com/Yang-Yanxiang/Designing-Data-Intensive-Applications 
+Summarised from DDIS:https://github.com/Yang-Yanxiang/Designing-Data-Intensive-Applications 
 Other Ref: https://aweather.github.io/software-engineering
