@@ -768,75 +768,85 @@ The downside of single-leader replication is that all writes must go through tha
 
 Multi-leader/Master-master/Active-Active replication allows more than one node to accept writes. Each leader accepts writes from a client, and acts as a follower by accepting the writes on other leaders.
 
-Use Cases for Multi-Leader Replication #
-Multi-datacenter operation: Here, each datacenter can have its own leader. This has a better performance for writes, since every write can be processed in its local datacenter (as opposed to being transmitted to a remote datacenter) and replicated asynchronously to other datacenters. It also means that if a datacenter is down, each data center can continue operating independently of the others.
+# Use Cases for Multi-Leader Replication
+### Multi-datacenter operation
+Here, each datacenter can have its own leader. This has a better performance for writes, since every write can be processed in its local datacenter (as opposed to being transmitted to a remote datacenter) and replicated asynchronously to other datacenters. It also means that if a datacenter is down, each data center can continue operating independently of the others.
+
+![Figure 5-6](images/fig-5-6.png)
 
 Multi-leader replication has the disadvantage that the same data may be concurrently modified in two different datacenters, and so there needs to be a way to handle conflicts.
 
-Clients with offline operation: Some applications need to work even when offline. Say mobile apps for example, apps like Google Calendar need to accept writes even when the user is not connected to the internet. These writes are then asynchronously replicated to other nodes when the user is connected again. In this setup, each device stores data in its local database. Meaning that each device essentially acts like a leader. CouchDB is designed for this mode of operation apparently.
+### Clients with offline operation
+Some applications need to work even when offline. Say mobile apps for example, apps like Google Calendar need to accept writes even when the user is not connected to the internet. These writes are then asynchronously replicated to other nodes when the user is connected again. In this setup, each device stores data in its local database. Meaning that each device essentially acts like a leader. CouchDB is designed for this mode of operation apparently.
 
-Collaborative Editing: Real-time collaborative editing applications like Confluence and Google Docs allow several people edit a document at the same time. This is also a database replication problem. Each user that edits a document has their changes saved to a local replica, from which it is then replicated asynchronously.
+### Collaborative Editing
+Real-time collaborative editing applications like Confluence and Google Docs allow several people edit a document at the same time. This is also a database replication problem. Each user that edits a document has their changes saved to a local replica (webbrowser cache), from which it is then replicated asynchronously.
 
 For faster collaboration, the unit of change can be a single keystroke. That is, after a keystroke is saved, it should be replicated.
 
-Handling Write Conflicts. #
+## Handling Write Conflicts.
 Multi-leader replication has the big disadvantage that write conflicts can occur, which requires conflict resolution.
+![Figure 5-7](images/fig-5-7.png)
 
 If two users change the same record, the writes may be successfully applied to their local leader. However, when the writes are asynchronously replicated, a conflict will be detected. This does not happen in a single-leader database.
 
-Synchronous versus asynchronous conflict detection #
+### Synchronous versus asynchronous conflict detection
 In theory, we could make conflict detection synchronous, meaning that we wait for the write to be replicated to all replicas before telling the user that the write was successful. Doing this will make one lose the main advantage of multi-leader replication though, which is allowing each replica to accept writes independently. Use single-leader replication if you want synchronous conflict detection.
 
-Conflict Avoidance #
-Conflict avoidance is the simplest strategy for dealing with conflicts. Conflicts can be avoided by ensuring that all the writes for a particular record go through the same leader. For example, you can make all the writes for a user go to the same datacenter, and use the leader there for reading and writing. This of course has a downside that if a datacenter fails, traffic needs to be rerouted to another datacenter, and there's a possibility of concurrent writes on different leaders, which could break down conflict avoidance.
+### Conflict Avoidance
+Conflict avoidance is the simplest strategy for dealing with conflicts. **Conflicts can be avoided by ensuring that all the writes for a particular record go through the same leader**. For example, you can make all the writes for a user go to the same datacenter, and use the leader there for reading and writing. This of course has a downside that if a datacenter fails, traffic needs to be rerouted to another datacenter, and there's a possibility of concurrent writes on different leaders, which could break down conflict avoidance.
 
-Converging toward a consistent state #
-A database must resolve conflicts in a convergent way, meaning that all the replicas must arrive at the same final value when all changes have been replicated.
+### Converging toward a consistent state
+On single-leader, the last write determines the final value of the field. In multi-leader, it's not clear what the final value should be.
 
-Various ways of achieving this are by:
+The database must resolve the conflict in a convergent way, all replicas must arrive a the same final value when all changes have been replicated.
+Different ways of achieving convergent conflict resolution.
+* Giving each write a unique ID ( e.g. a timestamp, UUID etc.), pick the write with the highest ID as the winner, and throw away the other writes. If timestamp is used, that's _Last write wins_, it's popular, but also prone to data loss.
+* Giving each replica a unique ID, and letting writes from the higher-number replica always take precedence over writes from a lower-number replica. This is also prone to data loss.
+* Recording the conflict in an explicit data structure that preserves the information, and writing application code that resolves the conflict at some later time (e.g. by prompting the user).
+* Merge the values together e.g. ordering them alphabetically.
 
-Giving each write a unique ID ( e.g. a timestamp, UUID etc.), pick the write with the highest ID as the winner, and throw away the other writes. If timestamp is used, that's Last write wins, it's popular, but also prone to data loss.
-Giving each replica a unique ID, and letting writes from the higher-number replica always take precedence over writes from a lower-number replica. This is also prone to data loss.
-Recording the conflict in an explicit data structure that preserves the information, and writing application code that resolves the conflict at some later time (e.g. by prompting the user).
-Merge the values together e.g. ordering them alphabetically.
-Custom Conflict Resolution Logic #
+### Custom Conflict Resolution Logic
 The most appropriate conflict resolution method may depend on the application, and thus, multi-leader replication tools often let users write conflict resolution logic using application code. The code may be executed on read or on write:
 
-On write: When the database detects a conflict in the log of replicated changes, it calls the conflict handler. The handler typically runs in a background process and must execute quickly. It has no user interaction.
-On Read: Conflicting writes are stored. However, when the data is read, the multiple versions of the data are returned to the user, either for the user to resolve them or for automatic resolution.
+**On write**: When the database detects a conflict in the log of replicated changes, it calls the conflict handler. The handler typically runs in a background process and must execute quickly. It has no user interaction.
+**On Read:** Conflicting writes are stored. However, when the data is read, the multiple versions of the data are returned to the user, either for the user to resolve them or for automatic resolution.
 Automatic conflict resolution is a difficult problem, but there are some research ideas being used today:
 
-Conflict-free replicated datatypes (CRDTs) - Used in Riak 2.0
-Mergeable persistent data structure - Similar to Git. Tracks history explicitly
-Operational transformation: Algorithm behind Google Docs.
+* Conflict-free replicated datatypes (CRDTs) - Used in Riak 2.0
+* Mergeable persistent data structure - Similar to Git. Tracks history explicitly
+* Operational transformation: Algorithm behind Google Docs.
 It's still an open area of research though.
 
-Multi-Leader Replication Topologies #
+## Multi-Leader Replication Topologies
 A replication topology is the path through which writes are propagated from one node to another. The most general topology is all-to-all, where each leader sends its writes to every other leader. Other types are circular topology and star topology.
+![Figure 5-8](images/fig-5-8.png)
 
 All-to-all topology is more fault tolerant than the circular and star topologies because in those topologies, one node failing can interrupt the flow of replication messages across other nodes, making them unable to communicate until the node is fixed.
 
-Leaderless Replication #
+## Leaderless Replication
 In this replication style, the concept of a leader is abandoned, and any replica can typically accept writes from clients directly.
 
 This style is used by Amazon for its in-house Dynamo system. Riak, Cassandra and Voldermort also use this model. These are called Dynamo style systems.
 
 In some leaderless implementations, the client writes directly to several replicas, while in others there's a coordinator node that does this on behalf of the client. Unlike a leader database though, this coordinator does not enforce any ordering of the writes.
 
-Preventing Stale Reads #
+## Preventing Stale Reads
 Say there are 3 replicas and one of the replicas goes down. A client could write to the system and have 2 of the replicas successfully acknowledge the write. However, when the offline node gets back up, anyone who reads from it may get stale responses.
 
 To prevent stale reads, as well as writing to multiple replicas, the client also reads from multiple replicas in parallel. Version numbers are attached to the result to determine which value is newer.
+![Figure 5-10](images/fig-5-10.png)
 
-Read repair and anti-entropy #
+### Read repair and anti-entropy
 When offline nodes come back up, the replication system must ensure that all data is eventually copied to every replica. Two mechanisms used in Dynamo-style datastores are:
 
-Read repair: When data is read from multiple replicas and the system detects that one of the replicas has a lower version number, the data could be copied to it immediately. This works for frequently read values, but has the downside that any data that is not frequently read may be missing from some replicas and thus have reduced durability.
-Anti-entropy process: In addition to the above, some databases have a background process that looks for differences in data between replicas and copies any missing data from one replica to another. This process does not copy writes in any particular order, and there may be a notable delay before data is copied.
-Quorums for reading and writing #
-Quorum reads and writes refer to the minimum number of votes for a read or a write to be valid. If there are n replicas, every write must be confirmed by at least w nodes to be considered successful, and every read must be confirmed by at least r nodes to be successful. The general rule that the number chosen for r and w should obey is that:
+**Read repair:** When data is read from multiple replicas and the system detects that one of the replicas has a lower version number, the data could be copied to it immediately. This works for frequently read values, but has the downside that any data that is not frequently read may be missing from some replicas and thus have reduced durability.
+**Anti-entropy process:** In addition to the above, some databases have **a background process that looks for differences in data between replicas and copies any missing data from one replica to another.** This process does not copy writes in any particular order, and there may be a notable delay before data is copied.
 
+### Quorums for reading and writing
+Quorum reads and writes refer to the minimum number of votes for a read or a write to be valid. If there are n replicas, every write must be confirmed by at least w nodes to be considered successful, and every read must be confirmed by at least r nodes to be successful. The general rule that the number chosen for r and w should obey is that:
 w + r > n.
+![Figure 5-11](images/fig-5-11.png)
 
 This way, we can typically expect an up-to-date value when reading because at least one of the r nodes we're reading from must overlap with the w nodes (barring sloppy quorums which are discussed below)
 
@@ -844,33 +854,29 @@ The parameters n, w, and r are typically configurable. A common choice is to mak
 
 Note that n does not always refer to the number of nodes in the cluster, it may just be the number of nodes that any given value must be stored on. This allows datasets to be partitioned. Partitioning is discussed in Chapter 6.
 
-Note:
-
-With w and r being less than n, we can still process writes if a node is unavailable.
+Note: With w and r being less than n, we can still process writes if a node is unavailable.
 Reads and writes are always sent to all n replicas in parallel, w and r determine how many nodes we wait for i.e. how many nodes need to report success before we consider the read or write to be successful.
-Limitations of Quorum Consistency #
-Quorums don't necessarily have to be majorities i.e. w + r > n. What matters is that the sets of nodes used by the read and write operations overlap in at least one node.
 
-We could also set w and r to smaller numbers, so that w + r ≤ n. With this, reads and writes are still sent to n nodes, but a smaller number of successful responses is required for the operation to succeed. However, you are also more likely to read stale values, as it's more likely that a read did not include the node with the latest value.
+### Limitations of Quorum Consistency
+Quorums don't necessarily have to be majorities i.e. w + r > n. **What matters is that the sets of nodes used by the read and write operations overlap in at least one node.**
 
-The upside of the approach though is that it allows lower latency and higher availability: if there's a network interruption and many replicas become unreachable, there's a higher chance that reads and writes can still be processed.
+We could also set w and r to smaller numbers, so that w + r ≤ n. With this, reads and writes are still sent to n nodes, but a smaller number of successful responses is required for the operation to succeed. However, you are also more likely to read stale values, as it's more likely that a read did not include the node with the latest value. The upside of the approach though is that it allows lower latency and higher availability: if there's a network interruption and many replicas become unreachable, there's a higher chance that reads and writes can still be processed.
 
 Even if we configure our database such that w + r > n , there are still edge cases where stale values may be returned. Possible scenarios are:
-
-If a sloppy quorum is used, the nodes for reading and writing may not overlap. Sloppy quorums are discussed further down.
-If two writes occur concurrently, it's still not clear which happened first. Therefore, the database may wrongly return the more stale one. If we pick a winner based on a timestamp (last write wins), writes can be lost due to clock skew.
-If a write happens concurrently with a read, the write may be reflected on only some of the replicas. It's unclear whether the read will return the old or new value.
-In a non-transaction model, if a write succeeds on some replicas but fails on others, it is not rolled back on the replicas where it succeeded.
+* If a sloppy quorum is used, the nodes for reading and writing may not overlap. Sloppy quorums are discussed further down.
+* If two writes occur concurrently, it's still not clear which happened first. Therefore, the database may wrongly return the more stale one. If we pick a winner based on a timestamp (last write wins), writes can be lost due to clock skew.
+* If a write happens concurrently with a read, the write may be reflected on only some of the replicas. It's unclear whether the read will return the old or new value.
+* In a non-transaction model, if a write succeeds on some replicas but fails on others, it is not rolled back on the replicas where it succeeded.
 From these points and others not listed, there is no absolute guarantee that quorum reads return the latest written value. These style of databases are optimized for use cases that can tolerate eventual consistency. Stronger guarantees require transactions or consensus.
 
-Monitoring Staleness #
+### Monitoring Staleness
 It's important to monitor whether databases are returning up-to-date results, even if the application can tolerate stale reads. If a replica falls behind significantly, the database should alert you so that you can investigate the cause.
 
 For leader-based replication, databases expose metrics for the replication lag. It's possible to do this because writes are applied to the leader and followers in the same order. We can determine how far behind a follower has fallen from a leader by subtracting it's position from the leader's current position.
 
 This is more difficult in leaderless replication systems as there is no fixed order in which writes are applied. There's some research into this, but it's not common practice yet.
 
-Sloppy Quorums and Hinted Handoff #
+### Sloppy Quorums and Hinted Handoff
 Databases with leaderless replication are appealing for use cases where high availability and low latency is required, as well as the ability to tolerate occasional stale reads. This is because they can tolerate failure of individual nodes without needing to failover since they're not relying on one node. They can also tolerate individual nodes going slow, as long as w or r nodes have responded.
 
 Note that the quorums described so far are not as fault tolerant as they can be. If any of the designated n nodes is unavailable for whatever reason, it's less likely that you'll be able to have w or r nodes reachable, making the system unavailable. Nodes being unavailable can be caused by anything, even something as simple as a network interruption.
