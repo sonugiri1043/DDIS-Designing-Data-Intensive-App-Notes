@@ -696,56 +696,74 @@ There are a number of things that can go wrong during the failover process:
 ## Implementation of Replication Logs
 Several replication methods are used in leader-based replication. These include:
 
-a) Statement-based replication: In this approach, the leader logs every write request (statement) that it executes, and sends the statement log to every follower. Each follower parses and executes the SQL statement as if it had been received from a client.
+### Statement-based replication
+In this approach, the leader logs every write request (statement) that it executes, and sends the statement log to every follower. Each follower parses and executes the SQL statement as if it had been received from a client.
 
 A problem with this approach is that a statement can have different effects on different followers. A statement that calls a nondeterministic function such as NOW() or RAND() will likely have a different value on each replica.
 If statements use an autoincrementing column, they must be executed in exactly the same order on each replica, or else they may have a different effect. This can be limiting when executing multiple concurrent transactions, as statements without any causal dependencies can be executed in any order.
 Statements with side effects (e.g. triggers, stored procedures) may result in different side effects occurring on each replica, unless the side effects are deterministic.
 Some databases work around this issues by requiring transactions to be deterministic, or configuring the leader to replace nondeterministic function calls with a fixed return value.
 
-b) Write-ahead log (WAL) shipping: The log is an append-only sequence of bytes containing all writes to the db. Besides writing the log to disk, the leader can also send the log to its followers across the network.
+### Write-ahead log (WAL) shipping
+The log is an append-only sequence of bytes containing all writes to the db. Besides writing the log to disk, the leader can also send the log to its followers across the network.
 
 The main disadvantage of this approach is that the log describes the data on a low level. It details which bytes were changed in which disk blocks. This makes the replication closely coupled to the storage engine. Meaning that if the storage engine changes in another version, we cannot have different versions running on the leader and the followers, which prevents us from making zero-downtime upgrades.
 
-c) Logical (row-based) log replication: This logs the changes that have occurred at the granularity of a row. Meaning that:
+### Logical (row-based) log replication
+This logs the changes that have occurred at the granularity of a row. Meaning that:
 
-For an inserted row, the log contains the new values of all columns.
-For a deleted row , the log contains enough information to identify the deleted row. Typically the primary key, but it could also log the old values of all columns.
-For an updated row, it contains enough information to identify the updated row, and the new values of all columns.
-This decouples the logical log from the storage engine internals. Thus, it makes it easier for external applications (say a data warehouse for offline analysis, or for building custom indexes and caches) to parse. This technique is called change data capture.
+* For an inserted row, the log contains the new values of all columns.
+* For a deleted row , the log contains enough information to identify the deleted row. Typically the primary key, but it could also log the old values of all columns.
+* For an updated row, it contains enough information to identify the updated row, and the new values of all columns.
 
-d) Trigger-based replication: This involves handling replication within the application code. It provides flexibility in dealing with things like: replicating only a subset of data, conflict resolution logic, replicating from one kind of database to another etc. Trigger and Stored procedures provide this functionality. This method has more overhead than other replication methods, and is more prone to bugs and limitations than the database's built-in replication.
+This decouples the logical log from the storage engine internals. Thus, it makes it easier for external applications (say a data warehouse for offline analysis, or for building custom indexes and caches) to parse. This technique is called **change data capture**.
 
-Problems with Replication Lag #
-Eventual Consistency: If an application reads from an asynchronous follower, it may see outdated information if the follower has fallen the leader. This inconsistency is a temporary state, and the followers will eventually catchup. That's eventual consistency.
+### Trigger-based replication
+This involves handling replication within the application code. It provides flexibility in dealing with things like: replicating only a subset of data, conflict resolution logic, replicating from one kind of database to another etc. Trigger and Stored procedures provide this functionality. This method has more overhead than other replication methods, and is more prone to bugs and limitations than the database's built-in replication.
+
+## Problems with Replication Lag
+**Eventual Consistency**: If an application reads from an asynchronous follower, it may see outdated information if the follower has fallen the leader. This inconsistency is a temporary state, and the followers will eventually catchup. That's eventual consistency.
 
 The delay between when a write happens on a leader and gets reflected on a follower is replication lag.
 
-Other Consistency Levels #
+Other Consistency Levels
 There are a number of issues that can occur as a result of replication lag. In this section, I'll summarize them under the minimum consistency level needed to prevent it from happening.
 
-a) Reading Your Own Writes: If a client writes a value to a leader and tries to read that same value, the read request might go to an asynchronous follower that has not received the write yet as a result of replication lag. The user might think the data was lost, when it really wasn't. The consistency level needed to prevent this situation is known as read-after-write consistency or read-your-writes consistency. It makes the guarantee that a user will always see their writes. There are a number of various techniques for implementing this:
+### Reading Your Own Writes
+**Read-after-write consistency, also known as read-your-writes consistenc**y is a guarantee that if the user reloads the page, they will always see any updates they submitted themselves.
 
-When reading a field that a user might have modified, read it from the leader, else read it from a follower. E.g. A user's profile on a social network can only be modified by the owner. A simple rule could be that user's profiles are always read from the leader, and other users' profiles are read from a follower.
-Of course this won't be effective if most things are editable by the user, since it'll drive most reads to the leader. Another option is to keep track of the time of the update, and only read from followers whose last updated time is at least that. The timestamp could be a logical one, like a sequence of writes.
-There's an extra complication with this if the same user is accessing my service across multiple devices say a desktop browser and a mobile app. They might be connected through different networks, yet we need to make sure they're in sync. This is known as cross-device read-after-write consistency. This is more complicated for reasons like the fact that:
+![Figure 5-3](images/fig-5-3.png)
 
-We can't use the last update time as suggested earlier, since the code on one device will not know about what updates have happened on the other device.
-If replicas are distributed across different datacenters, each device might hit different data datacenters which will have followers that may or may not have received the write. A solution to this is to force that all the reads from a user must be routed to the leader. This will of course introduce the complexity of routing all requests from all of a user's devices to the same datacenter.
-b) Monotonic Reads: An anomaly that can occur when reading from asynchronous followers is that it's possible for a user to see things moving backward in time. Imagine a scenario where a user makes the same read multiple times, and each read request goes to a different follower. It's possible that a write has appeared on some followers, and not on others. Time might seem to go backwards sometimes when the user sees old data, after having read newer data.
+How to implement it:
 
-Monotonic reads is a consistency level that guarantees that a user will not read older data after having previously read newer data. This guarantee is stronger than eventual consistency, but weaker than strong consistency.
+* When reading something that the user may have modified, read it from the leader. For example, user profile information on a social network is normally only editable by the owner. A simple rule is always read the user's own profile from the leader.
+* You could track the time of the latest update and, for one minute after the last update, make all reads from the leader.
+* The client can remember the timestamp of the most recent write, then the system can ensure that the replica serving any reads for that user reflects updates at least until that timestamp.
+* If your replicas are distributed across multiple datacenters, then any request needs to be routed to the datacenter that contains the leader.
+Another complication is that the same user is accessing your service from multiple devices, you may want to provide **cross-device read-after-write consistency.**
 
-A solution to this is that every read from a user should go to the same replica. The hash of a user's id could be used to determine what replica to go to.
+Some additional issues to consider:
+* Remembering the timestamp of the user's last update becomes more difficult. The metadata will need to be centralised.
+* If replicas are distributed across datacenters, there is no guarantee that connections from different devices will be routed to the same datacenter. You may need to route requests from all of a user's devices to the same datacenter.
 
-c) Consistent Prefix Reads: Another anomaly that can occur as a result of replication lag is a violation of causality. Meaning that a sequence of writes that occur in one order might be read in another order. This can especially happen in distributed databases where different partitions operate independently and there's no global ordering of writes. Consistent prefix reads is a guarantee that prevents this kind of problem.
+### Monotonic Reads
+Because of followers falling behind, it's possible for a user to see things moving backward in time.
+
+When you read data, you may see an old value; **monotonic reads only means that if one user makes several reads in sequence, they will not see time go backward.**
+![Figure 5-4](images/fig-5-4.png)
+
+Make sure that each user always makes their reads from the same replica. The replica can be chosen based on a hash of the user ID. If the replica fails, the user's queries will need to be rerouted to another replica.
+
+### Consistent Prefix Reads
+Another anomaly that can occur as a result of replication lag is a violation of causality. Meaning that a sequence of writes that occur in one order might be read in another order. This can especially happen in distributed databases where different partitions operate independently and there's no global ordering of writes. Consistent prefix reads is a guarantee that prevents this kind of problem.
+![Figure 5-5](images/fig-5-5.png)
 
 One solution is to ensure that causally related writes are always written to the same partition, but this cannot always be done efficiently.
 
-Solutions for Replication Lag #
+## Solutions for Replication Lag
 Application developers should ideally not have to worry about subtle replication issues and should trust that their databases "do the right thing". This is why transactions exist. They allow databases to provide stronger guarantees about things like consistency. However, many distributed databases have abandoned transactions because of the complexity, and have asserted that eventual consistency is inevitable. Martin discusses these claims later in the chapter.
 
-Multi-Leader Replication #
+# Multi-Leader Replication
 The downside of single-leader replication is that all writes must go through that leader. If the leader is down, or a connection can't be made for whatever reason, you can't write to the database.
 
 Multi-leader/Master-master/Active-Active replication allows more than one node to accept writes. Each leader accepts writes from a client, and acts as a follower by accepting the writes on other leaders.
