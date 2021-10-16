@@ -626,7 +626,7 @@ We focus on three concerns that are important in most software systems:
 ---
 # Chapter 5: Replication <a name="chapter5"></a>
 
-## Introduction
+# Introduction
 * Reasons for replication:
   * Store data closer to users to reduce latency.
   * Improve availability.
@@ -634,67 +634,66 @@ We focus on three concerns that are important in most software systems:
 * The challenge is not storing the data, but handling changes to replicated data.
 * There are three popular algorithms: single-leader, multi-leader, and leaderless replication.
 
-Leaders and Followers #
-Every node that keeps a copy of data is a replica. Obvious question is: how do we make sure that the data on all the replicas is the same? The most common approach for this is leader-based replication. In this approach:
+# Leaders and Followers
+Every node that keeps a copy of data is a replica. Obvious question is: how do we make sure that the data on all the replicas is the same? The most common approach for this is **leader-based replication**. In this approach:
 
-Only the leader accepts writes.
-The followers read off a replication log and apply all the writes in the same order that they were processed by the leader.
-A client can query either the leader or any of its followers for read requests.
-So here, the followers are read-only, while writes are only accepted by the leader.
+1. Only the leader accepts writes.
+2. The followers read off a replication log and apply all the writes in the same order that they were processed by the leader.
+3. A client can query either the leader or any of its followers for read requests.
 
-This approach is used by MySQL, PostgreSQL etc., as well as non-relational databases like MongoDB, RethinkDB, and Espresso.
+![Figure 5-1](images/fig-5-1.png)
 
-Synchronous Versus Asynchronous Replication #
-With Synchronous replication, the leader must wait for a positive acknowledgement that the data has been replicated from at least one of the followers before terming the write as successful, while with Asynchronous replication, the leader does not have to wait.
+So here, the followers are read-only, while writes are only accepted by the leader. This approach is used by MySQL, PostgreSQL etc., as well as non-relational databases like MongoDB, RethinkDB, and Espresso.
 
-Synchronous Replication #
+## Synchronous Versus Asynchronous Replication
+With Synchronous replication, the **leader must wait for a positive acknowledgement** that the data has been replicated from at least one of the followers before terming the write as successful, while with Asynchronous replication, the leader does not have to wait.
+
+![Figure 5-2](images/fig-5-2.png)
+
+### Synchronous Replication
 The advantage of synchronous replication is that if the leader suddenly fails, we are guaranteed that the data is available on the follower.
 
 The disadvantage is that if the synchronous follower does not respond (say it has crashed or there's a network delay or something else), the write cannot be processed. A leader must block all writes and wait until the synchronous replica is available again. Therefore, it's impractical for all the followers to be synchronous, since just one node failure can cause the system to become unavailable.
 
-In practice, enabling synchronous replication on a database usually means that one of the followers is synchronous, and the others are asynchronous. If the synchronous one is down, one of the asynchronous followers is made synchronous. This configuration is sometimes called semi-synchronous.
+In practice, enabling synchronous replication on a database usually means that one of the followers is synchronous, and the others are asynchronous. If the synchronous one is down, one of the asynchronous followers is made synchronous. This configuration is sometimes called **semi-synchronous**.
 
-Asynchronous Replication #
+### Asynchronous Replication
 In this approach, if the leaders fails and is not recoverable, any writes that have not been replicated to followers are lost.
-
 An advantage of this approach though, is that the leader can continue processing writes, even if all its followers have fallen behind.
 
 There's some research into how to prevent asynchronous-performance like systems from losing data if the leader fails. A new replication method called Chain replication is a variant of synchronous replication that aims to provide good performance and availability without losing data.
 
-Setting Up New Followers #
+## Setting Up New Followers
 New followers can be added to an existing cluster to replace a failed node, or to add an additional replica. The next question is how to ensure the new follower has an accurate copy of the leader's data?
 
-Two options that are not sufficient are:
-
-Just copying data files from one node to another. The data in the leader is always updating and a copy will see different versions at different points in time.
-Locking the database (hence making it unavailable for writes). This will go against the goal of high availability.
-There's an option that works without downtime, which involves the following steps:
-
-Take a consistent snapshot of the leader's db at some point in time. It's possible to do this without taking a lock on the entire db. Most databases have this feature.
-Copy the snapshot to the follower node.
-The follower then requests all the data changes that happened since the snapshot was taken.
-When the follower has processed the log of changes since the snapshot, we say it has caught up.
+1. Take a consistent snapshot of the leader's db at some point in time. It's possible to do this without taking a lock on the entire db. Most databases have this feature.
+2. Copy the snapshot to the follower node.
+3. The follower then requests all the data changes that happened since the snapshot was taken.
+4. When the follower has processed the log of changes since the snapshot, we say it has caught up.
 In some systems, this process is fully automated, while in others, it is manually performed by an administrator.
 
-Handling Node Outages #
+## Handling Node Outages
 Any node can fail, therefore, we need to keep the system running despite individual node failures, and minimize the impact of a node outage. How do we achieve high availability with leader-based replication?
 
-Scenario A - Follower Failure: Catch-up recovery #
+### Scenario A - Follower Failure: Catch-up recovery #
 Each follower typically keeps a local log of the data changes it has received from the leader. If a follower node fails, it can compare its local log to the replication log maintained by the leader, and then process all the data changes that occurred when the follower was disconnected.
 
-Scenario B - Leader failure: Failover #
-This is trickier: One of the nodes needs to be promoted to be the new leader, clients need to be reconfigured to send their writes to the new leader, and the other followers need to start consuming data changes from the new leader. This whole process is called a failover. Failover can be handled manually or automatically. An automatic failover consists of:
+### Scenario B - Leader failure: Failover #
+This is trickier: One of the nodes needs to be promoted to be the new leader, clients need to be reconfigured to send their writes to the new leader, and the other followers need to start consuming data changes from the new leader. This whole process is called a **failover**. Failover can be handled manually or automatically. 
 
-Determining that the leader has failed: Many things could go wrong: crashes, power outages, network issues etc. There's no foolproof way of determining what has gone wrong, so most systems use a timeout. If the leader does not respond within a given interval, it's assumed to be dead.
-Choosing a new leader: This can be done through an election process (where the new leader is chosen by a majority of the remaining replicas), or a new leader could be appointed by a previously elected controller node. The best candidate for leadership is typically the one with the most up-to-date data changes from the old leader (to minimize data loss)
-Reconfiguring the system to use the new leader: Clients need to send write requests to the new leader, and followers need to process the replication log from the new leader. The system also needs to ensure that when the old leader comes back, it does not believe that it is still the leader. It must become a follower.
+An automatic failover consists of:
+1. **Determining that the leader has failed**: Many things could go wrong: crashes, power outages, network issues etc. There's no foolproof way of determining what has gone wrong, so _most systems use a timeout_. If the leader does not respond within a given interval, it's assumed to be dead.
+2. **Choosing a new leader**: This can be done through an election process (where the new leader is chosen by a majority of the remaining replicas), or a new leader could be appointed by a previously elected controller node. The best candidate for leadership is typically the one with the most up-to-date data changes from the old leader (to minimize data loss)
+3. **Reconfiguring the system to use the new leader**: Clients need to send write requests to the new leader, and followers need to process the replication log from the new leader. The system also needs to ensure that when the old leader comes back, it does not believe that it is still the leader. It must become a follower.
+
 There are a number of things that can go wrong during the failover process:
 
-For asynchronous systems, we may have to discard some writes if they have not been processed on a follower at the time of the leader failure. This violates clients' durability expectations.
-Discarding writes is especially dangerous if other storage systems are coordinated with the database contents. For example, say an autoincrementing counter is used as a MySQL primary key and a redis store key, if the old leader fails and some writes have not been processed, the new leader could begin using some primary keys which have already been assigned in redis. This will lead to inconsistencies in the data, and it's what happened to Github (https://github.blog/2012-09-14-github-availability-this-week/).
-In fault scenarios, we could have two nodes both believe that they are the leader: split brain. Data is likely to be lost/corrupted if both leaders accept writes and there's no process for resolving conflicts. Some systems have a mechanism to shut down one node if two leaders are detected. This mechanism needs to be designed properly though, or what happened at Github can happen again( https://github.blog/2012-12-26-downtime-last-saturday/)
-It's difficult to determine the right timeout before the leader is declared dead. If it's too long, it means a longer time to recovery in the case where the leader fails. If it's too short, we can have unnecessary failovers, since a temporary load spike could cause a node's response time to increase above the timeout, or a network glitch could cause delayed packets. If the system is already struggling with high load or network problems, unnecessary failover can make the situation worse.
-Implementation of Replication Logs #
+* For asynchronous systems, we may have to discard some writes if they have not been processed on a follower at the time of the leader failure. This violates   clients' durability expectations.
+* Discarding writes is especially dangerous if other storage systems are coordinated with the database contents. For example, say an autoincrementing counter is used as a MySQL primary key and a redis store key, if the old leader fails and some writes have not been processed, the new leader could begin using some primary keys which have already been assigned in redis. This will lead to inconsistencies in the data, and it's what happened to Github (https://github.blog/2012-09-14-github-availability-this-week/).
+* In fault scenarios, we could have two nodes both believe that they are the leader: **split brain**. Data is likely to be lost/corrupted if both leaders accept writes and there's no process for resolving conflicts. Some systems have a mechanism to shut down one node if two leaders are detected. This mechanism needs to be designed properly though, or what happened at Github can happen again( https://github.blog/2012-12-26-downtime-last-saturday/)
+* It's difficult to determine the right timeout before the leader is declared dead. If it's too long, it means a longer time to recovery in the case where the leader fails. If it's too short, we can have unnecessary failovers, since a temporary load spike could cause a node's response time to increase above the timeout, or a network glitch could cause delayed packets. If the system is already struggling with high load or network problems, unnecessary failover can make the situation worse.
+
+## Implementation of Replication Logs
 Several replication methods are used in leader-based replication. These include:
 
 a) Statement-based replication: In this approach, the leader logs every write request (statement) that it executes, and sends the statement log to every follower. Each follower parses and executes the SQL statement as if it had been received from a client.
