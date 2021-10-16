@@ -824,7 +824,7 @@ A replication topology is the path through which writes are propagated from one 
 
 All-to-all topology is more fault tolerant than the circular and star topologies because in those topologies, one node failing can interrupt the flow of replication messages across other nodes, making them unable to communicate until the node is fixed.
 
-## Leaderless Replication
+# Leaderless Replication
 In this replication style, the concept of a leader is abandoned, and any replica can typically accept writes from clients directly.
 
 This style is used by Amazon for its in-house Dynamo system. Riak, Cassandra and Voldermort also use this model. These are called Dynamo style systems.
@@ -843,7 +843,7 @@ When offline nodes come back up, the replication system must ensure that all dat
 **Read repair:** When data is read from multiple replicas and the system detects that one of the replicas has a lower version number, the data could be copied to it immediately. This works for frequently read values, but has the downside that any data that is not frequently read may be missing from some replicas and thus have reduced durability.
 **Anti-entropy process:** In addition to the above, some databases have **a background process that looks for differences in data between replicas and copies any missing data from one replica to another.** This process does not copy writes in any particular order, and there may be a notable delay before data is copied.
 
-### Quorums for reading and writing
+## Quorums for reading and writing
 Quorum reads and writes refer to the minimum number of votes for a read or a write to be valid. If there are n replicas, every write must be confirmed by at least w nodes to be considered successful, and every read must be confirmed by at least r nodes to be successful. The general rule that the number chosen for r and w should obey is that:
 w + r > n.
 ![Figure 5-11](images/fig-5-11.png)
@@ -876,87 +876,82 @@ For leader-based replication, databases expose metrics for the replication lag. 
 
 This is more difficult in leaderless replication systems as there is no fixed order in which writes are applied. There's some research into this, but it's not common practice yet.
 
-### Sloppy Quorums and Hinted Handoff
+## Sloppy Quorums and Hinted Handoff
 Databases with leaderless replication are appealing for use cases where high availability and low latency is required, as well as the ability to tolerate occasional stale reads. This is because they can tolerate failure of individual nodes without needing to failover since they're not relying on one node. They can also tolerate individual nodes going slow, as long as w or r nodes have responded.
 
 Note that the quorums described so far are not as fault tolerant as they can be. If any of the designated n nodes is unavailable for whatever reason, it's less likely that you'll be able to have w or r nodes reachable, making the system unavailable. Nodes being unavailable can be caused by anything, even something as simple as a network interruption.
 
-To make the system more fault tolerant, instead of returning errors to all requests for which can't reach a quorum of w or r nodes, the system could accept reads and writes on nodes that are reachable, even if they are not among the designated n nodes on which the value usually lives. This concept is known as a sloppy quorum.
+_To make the system more fault tolerant, instead of returning errors to all requests for which can't reach a quorum of w or r nodes, the system could accept reads and writes on nodes that are reachable, even if they are not among the designated n nodes on which the value usually lives. This concept is known as a **sloppy quorum.**_
 
 With a sloppy quorum, during network interruptions, reads and writes still require r and w successful responses, but they do not have to be among the designated n "home" nodes for a value. These are like temporary homes for the value.
 
 When the network interruption is fixed, the writes that were temporarily accepted on behalf of another node are sent to the appropriate "home" node. This is hinted handoff.
 
 Sloppy quorums are particularly useful for increasing write availability. However, it also means that even when w + r > n, there is a possibility of reading stale data, as the latest value may have been temporarily written to some values outside of n.
+_Sloppy quorum is more of an assurance of durability, than an actual quorum._
 
-Sloppy quorum is more of an assurance of durability, than an actual quorum.
-
-Multi-datacenter operation #
+### Multi-datacenter operation
 For datastores like Cassandra and Voldermort which implement leaderless replication across multiple datacenters, the number of replicas n includes replicas in all datacenter.
 
 Each write is also sent to all datacenters, but it only waits for acknowledgement from a quorum of nodes within its local datacenter so that it's not affected by delays and interruptions on the link between multiple datacenters.
 
-Detecting Concurrent Writes #
+## Detecting Concurrent Writes
 In dynamo-style databases, several clients can concurrently write to the same key. When this happens, we have a conflict. We've briefly touched on conflict resolution techniques already, but we'll discuss them in more detail.
 
-Last write wins (discarding concurrent writes) #
+![Figure 5-12](images/fig-5-12.png)
+
+### Last write wins (discarding concurrent writes)
 One approach for conflict resolution is the last write wins approach. It involves forcing an arbitrary ordering on concurrent writes (could be by using timestamps), picking the most "recent" value, and discarding writes with an earlier timestamp.
 
 This helps to achieve the goal of eventual convergence across the data in replicas, at the cost of durability. If there were several concurrent writes the same key, only one of the writes will survive and the others will be discarded, even if all the writes were reported as successful.
 
 Last write wins (LWW) is the only conflict resolution method supported by Apache Cassandra.
-
 If losing data is not acceptable, LWW is not a good choice for conflict resolution.
 
-The "happens-before" relationship and concurrency #
+### The "happens-before" relationship and concurrency
 Whenever we have two operations A and B, there are three possibilities:
 
-Either A happened before B
-Or B happened before A
-Or A and B are concurrent.
+* Either A happened before B
+* Or B happened before A
+* Or A and B are concurrent.
 We say that an operation A happened before operation B if either of the following applies:
 
-B knows about A
-B depends on A
-B builds upon A
-Thus, if we cannot capture this relationship between A and B, we say that they are concurrent. If they are concurrent, we have a conflict that needs to be resolved.
+* B knows about A
+* B depends on A
+* B builds upon A
+Thus, **if we cannot capture this relationship between A and B, we say that they are concurrent.** If they are concurrent, we have a conflict that needs to be resolved.
 
-Note: Exact time does not matter for defining concurrency, two operations are concurrent if they are both unaware of each other, regardless of the physical time which they occurred. Two operations can happen sometime apart and still be concurrent, as long as they are unaware of each other.
+Note: **Exact time does not matter for defining concurrency, two operations are concurrent if they are both unaware of each other, regardless of the physical time which they occurred.** Two operations can happen sometime apart and still be concurrent, as long as they are unaware of each other.
 
-Capturing the happens-before relationship #
+### Capturing the happens-before relationship
 In a single database replica, version numbers are used to determine concurrency.
 
 It works like this:
-
-Each key is assigned a version number, and that version number is incremented every time that key is written, and the database stores the version number along with the value written. That version number is returned to a client.
-A client must read a key before writing. When it reads a key, the server returns the latest version number together with the values that have not been overwritten.
-When a client wants to write a new value, it returns the last version number it received in the prior step alongside the write.
-If the version number being passed with a write is higher than the version number of other values in the db, it means the new write is aware of those values at the time of the write (since it was returned from the prior read), and can overwrite all values with that version number or below.
-If there are higher version numbers, the database must keep all values with the higher version number (because those values are concurrent with the incoming write- it did not know about them).
+* **Each key is assigned a version number**, and that version number is incremented every time that key is written, and the database stores the version number along with the value written. That version number is returned to a client.
+* **A client must read a key before writing**. When it reads a key, the server returns the latest version number together with the values that have not been overwritten.
+* When a client wants to write a new value, it returns the last version number it received in the prior step alongside the write.
+* If the version number being passed with a write is higher than the version number of other values in the db, it means the new write is aware of those values at the time of the write (since it was returned from the prior read), and can overwrite all values with that version number or below.
+* If there are higher version numbers, the database must keep all values with the higher version number (because those values are concurrent with the incoming write- it did not know about them).
 Example scenario:
 
 If two clients are trying to write a value for the same key at the same time, both would first read the data for that key and get the latest version number of say: 3. If one of them writes first, the version number will be updated to 4 from the database end. However, since the slower one will pass a version number of 3, it means it is concurrent with the other one since it's not aware of the higher version number of 4.
 
 When a write includes the version number from a prior read, that tells us which previous state the write is based on.
 
-Merging Concurrently Written Values #
+### Merging Concurrently Written Values
 With the algorithm described above, clients have to do the work of merging concurrently written values. Riak calls these values siblings.
 
 A simple merging approach is to take a union of the values. However, this can be faulty if one operation deleted a value but that value is still present in a sibling. To prevent this problem, the system must leave a marker (tombstone) to indicate that an item has been removed when merging siblings.
 
 CRDTs are data structures that can automatically merge siblings in sensible ways, including preserving deletions.
 
-Version Vectors #
+### Version Vectors
 The algorithm described above used only a single replica. When we have multiple replicas, we use a version number per replica and per key and follow the same algorithm. Note that each replica also keeps track of the version numbers seen from each of the other replicas. With this information, we know which values to overwrite and which values to keep as siblings.
 
-The collection of version numbers from all the replicas is called a version vector. Dotted version vectors are a nice variant of this used in Riak: https://riak.com/posts/technical/vector-clocks-revisited-part-2-dotted-version-vectors/
+**The collection of version numbers from all the replicas is called a version vector**. Dotted version vectors are a nice variant of this used in Riak: https://riak.com/posts/technical/vector-clocks-revisited-part-2-dotted-version-vectors/
 
 Version vectors are also sent to clients when values are read, and need to be sent back to the database when a value is written.
-
 Version vectors enable us to distinguish between overwrites and concurrent writes.
-
 We also have Vector clocks, which are different from Version Vectors apparently: https://haslab.wordpress.com/2011/07/08/version-vectors-are-not-vector-clocks/
 
-
 Summarised from DDIS:https://github.com/Yang-Yanxiang/Designing-Data-Intensive-Applications 
-Other Ref: https://aweather.github.io/software-engineering
