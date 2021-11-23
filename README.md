@@ -1009,14 +1009,6 @@ When we have a suitable hash function for keys, each partition can be assigned a
 
 A good hash function takes skewed data and makes it uniformly distributed. The partition boundaries can be evenly spaced or chosen pseudo-randomly (with the latter being sometimes known as consistent hashing).
 
-Aside:
-
-Consistent hashing, as defined by Karger et al, is a way of evenly distributing load across an internet-wide system of caches such as a content delivery network (CDN). It uses randomly chosen partition boundaries to avoid the need for central control or distributed consensus. Note that consistent here has nothing to do with replica consistency or ACID consistency, but rather describes a particular approach to rebalancing.
-
-As we shall see in “Rebalancing Partitions”, this particular approach actually doesn’t work very well for databases, so it is rarely used in practice (the documentation of some databases still refers to consistent hashing, but it is often inaccurate). It's best to avoid the term consistent hashing and just call it hash partitioning instead.
-
-Kleppmann, Martin. Designing Data-Intensive Applications (Kindle Locations 5169-5174). O'Reilly Media. Kindle Edition.
-
 This approach has the downside that we lose the ability to do efficient range queries. Keys that were once adjacent are now scattered across all the partitions, so sort order is lost.
 
 Note:
