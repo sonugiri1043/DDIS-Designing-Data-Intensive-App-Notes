@@ -1169,6 +1169,25 @@ There are some use cases where multi-object operations need to be coordinated e.
 * In a document data model, when denormalized information needs to be updated, several documents often need to be updated in one go.
 * In databases with secondary indexes (i.e. almost everything except pure key-value stores), the indexes also need to be updated every time a value is changed. That is, the indexes needs to be updated with the new records.
 
+## Handling Errors And Aborts
+A key feature of a transaction is that it can be aborted and safely retried if an error occurred. In datastores with leaderless replication is the application's responsibility to recover from errors.
+
+# Weak isolation levels
+* Concurrency issues (race conditions) come into play when one transaction reads data that is concurrently modified by another transaction, or when two transactions try to simultaneously modify the same data.
+* Databases have long tried to hide concurrency issues by providing transaction isolation.
+* In practice, is not that simple. Serializable isolation has a performance cost. It's common for systems to use weaker levels of isolation, which protect against some concurrency issues, but not all.
+
+Weak isolation levels used in practice:
+
+## Read committed
+The core characteristics of this isolation level are that **it prevents dirty reads and dirty writes**. It makes two guarantees:
+* When reading from the database, **you will only see data that has been committed (no dirty reads)**. Writes by a transaction only become visible to others when that transaction commits.
+* When writing to the database, y**ou will only overwrite data that has been committed (no dirty writes)**. Dirty writes are prevented usually by delaying the second write until the first write's transaction has committed or aborted.
+
+Most databases prevent dirty writes by using row-level locks that hold the lock until the transaction is committed or aborted. Only one transaction can hold the lock for any given object.
+
+On dirty reads, requiring read locks does not work well in practice as one long-running write transaction can force many read-only transactions to wait. For every object that is written, **the database remembers both the old committed value and the new value set by the transaction that currently holds the write lock. While the transaction is ongoing, any other transactions that read the object are simply given the old value.**
+
 ---
 
 Summarised from DDIS:https://github.com/Yang-Yanxiang/Designing-Data-Intensive-Applications 
