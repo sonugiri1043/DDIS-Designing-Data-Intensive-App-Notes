@@ -1261,6 +1261,64 @@ Locks and compare-and-set operations assume that there's a single up-to-date cop
 
 A common approach in replicated databases is to allow concurrent writes to create several conflicting versions of a value (also know as siblings), and to use application code or special data structures to resolve and merge these versions after the fact.
 
+## Write Skew and Phantoms
+Imagine Alice and Bob are two on-call doctors for a particular shift. Imagine both the request to leave because they are feeling unwell. Unfortunately they happen to click the button to go off call at approximately the same time.
+
+**The effect, where a write in one transaction changes the result of a search query in another transaction, is called a phantom.**
+
+```bash
+ALICE                                   BOB
+
+┌─ BEGIN TRANSACTION                    ┌─ BEGIN TRANSACTION
+│                                       │
+├─ currently_on_call = (                ├─ currently_on_call = (
+│   select count(*) from doctors        │    select count(*) from doctors
+│   where on_call = true                │    where on_call = true
+│   and shift_id = 1234                 │    and shift_id = 1234
+│  )                                    │  )
+│  // now currently_on_call = 2         │  // now currently_on_call = 2
+│                                       │
+├─ if (currently_on_call  2) {          │
+│    update doctors                     │
+│    set on_call = false                │
+│    where name = 'Alice'               │
+│    and shift_id = 1234                ├─ if (currently_on_call >= 2) {
+│  }                                    │    update doctors
+│                                       │    set on_call = false
+└─ COMMIT TRANSACTION                   │    where name = 'Bob'  
+                                        │    and shift_id = 1234
+                                        │  }
+                                        │
+                                        └─ COMMIT TRANSACTION
+```
+
+Another E.g. A meeting room booking app where two transactions running concurrently first see that a timespan was not booked, and then add a row each for different meetings.
+
+Ways to prevent write skew are a bit more restricted:
+* Atomic operations don't help as things involve more objects.
+* Automatically prevent write skew requires true serializable isolation.
+* The second-best option in this case is probably to explicitly lock the rows that the transaction depends on.
+
+```bash
+BEGIN TRANSACTION;
+
+SELECT * FROM doctors
+WHERE on_call = true
+AND shift_id = 1234 FOR UPDATE;
+
+UPDATE doctors
+SET on_call = false
+WHERE name = 'Alice'
+AND shift_id = 1234;
+
+COMMIT;
+```
+### Materializing Conflicts
+As described above, we can reduce the effect of phantoms by attaching locks to the rows used in a transaction. However, if there's no object to which we can attach the locks (say if our initial query is searching for the absence of rows), we can artificially introduce locks.
+
+The approach of taking a phantom and turning it into a lock conflict on a concrete set of rows introduced in the database is known as materializing conflicts.
+This should be a last resort, as a serializable isolation level is much preferable in most cases.
+
 ---
 
 Summarised from DDIS:https://github.com/Yang-Yanxiang/Designing-Data-Intensive-Applications 
