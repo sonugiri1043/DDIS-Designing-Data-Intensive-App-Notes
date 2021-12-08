@@ -1143,6 +1143,32 @@ Systems that don't meet the ACID criteria are sometimes called **BASE: Basically
 * **Isolation**: Concurrently executing transactions are isolated from each other. It's also called serializability, each transaction can pretend that it is the only transaction running on the entire database, and the result is the same as if they had run serially (one after the other).
 * **Durability**: Once a transaction has committed successfully, any data it has written will not be forgotten, even if there is a hardware fault or the database crashes. In a single-node database this means the data has been written to nonvolatile storage. In a replicated database it means the data has been successfully copied to some number of nodes.
 
+![Figure 7-1](images/fig-7-1.png)
+
+# Single-Object and Multi-Object Operations
+The definitions of atomicity and isolation so far assume that several objects (rows, documents, records) will be modified at once. These are known as multi-object transactions.
+
+![Figure 7-2](images/fig-7-2.png)
+
+How to determine which read and write operations belong to the same transaction. 
+In relational databases, this is done based on the client's TCP connection to the database server: on any particular connection, everything between BEGIN TRANSACTION and a COMMIT is considered to be part of the same transaction.
+
+![Figure 7-3](images/fig-7-3.png)
+
+Atomicity and isolation also apply when a single object is being changed. E.g.
+* If a 20KB JSON document is being written to a database and the network connection is interrupted after the first 10KB have been sent, does the database store the 10KB fragment of JSON?
+* If power fails while the database is in the middle of overwriting the previous value on disk, will we have the previous and new values spliced together?
+* If another client reads a document while it's being updated, will it see a partially updated value.
+* These issues are why storage engines almost universally aim to provide atomicity and isolation on the level of a single object (such as a key-value pair) on one node.
+
+**Atomicity can be implemented by using a log for crash recovery, while isolation can be implemented using a lock on each object.**
+
+## The need for multi-object transactions
+There are some use cases where multi-object operations need to be coordinated e.g.
+* When we are adding new rows to a table which have references to a row in another table using foreign keys. The foreign keys have to be coordinated across the tables and must be correct and up to date.
+* In a document data model, when denormalized information needs to be updated, several documents often need to be updated in one go.
+* In databases with secondary indexes (i.e. almost everything except pure key-value stores), the indexes also need to be updated every time a value is changed. That is, the indexes needs to be updated with the new records.
+
 ---
 
 Summarised from DDIS:https://github.com/Yang-Yanxiang/Designing-Data-Intensive-Applications 
