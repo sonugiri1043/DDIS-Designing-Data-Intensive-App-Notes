@@ -1126,5 +1126,20 @@ In all approaches, it's important for there to be a consensus among all the node
 Many distributed systems rely on a coordination service like Zookeeper to keep track of this cluster metadata. This way, the other components of the system such as the routing tier or the partitioning-aware client can subscribe to this information in Zookeeper.
 
 --
+# Chapter 6: Transactions <a name="chapter6"></a>
 
+# Introduction
+* Transactions were **created to simplify the programming model for applications accessing a database**.
+* **All the reads and writes in a transaction are executed as one operation**: either the entire operation succeeds (commit) or it fails (abort, rollback).
+
+# The Meaning of ACID
+ACID stands for **Atomicity, Consistency, Isolation, and Durability**. It is often used to describe the safety guarantees provided by transactions
+Systems that don't meet the ACID criteria are sometimes called **BASE: Basically Available, Soft state, and Eventual Consistency**, which can mean almost anything you want.
+
+* **Atomicity**: In the context of a database transaction, atomicity refers to the ability to abort a transaction on error and have all the writes from the transaction discarded. Abortability would have been a better term than atomicity.
+* **Consistency**: Invariants on your data must always be true. The idea of consistency depends on the application's notion of invariants. Atomicity, isolation, and durability are properties of the database, whereas consistency (in an ACID sense) is a property of the application.
+* **Isolation**: Concurrently executing transactions are isolated from each other. It's also called serializability, each transaction can pretend that it is the only transaction running on the entire database, and the result is the same as if they had run serially (one after the other).
+* **Durability**: Once a transaction has committed successfully, any data it has written will not be forgotten, even if there is a hardware fault or the database crashes. In a single-node database this means the data has been written to nonvolatile storage. In a replicated database it means the data has been successfully copied to some number of nodes.
+
+--
 Summarised from DDIS:https://github.com/Yang-Yanxiang/Designing-Data-Intensive-Applications 
