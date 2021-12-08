@@ -8,7 +8,6 @@
 5. [Chapter 5: Replication](#chapter5)
 6. [Chapter 6: Partitioning](#chapter6)
 7. [Chapter 7: Transactions](#chapter7)
-8. 
 
 We call an application data-intensive if data is its primary challenge - the quantity of data, the complexity of data, or the speed at which it is changing - as opposed to compute-intensive, where CPU cycles are the bottleneck.
 
@@ -1224,6 +1223,43 @@ MVCC-based snapshot isolation is typically implemented by given each transaction
 How do indexes work in a multi-version database? One option is to have the index simply point to all versions of an object and require an index query to filter out any object versions that are not visible to the current transaction.
 
 Snapshot isolation is called serializable in Oracle, and repeatable read in PostgreSQL and MySQL.
+
+## Preventing Lost Updates
+This might happen if an application reads some value from the database, modifies it, and writes it back. If two transactions do this concurrently, one of the modifications can be lost (later write clobbers the earlier write).
+
+This can happen in different scenarios:
+* If a counter needs to be incremented. It requires reading the current value, calculating the new value, and writing back the updated value. If two transactions increment the counter by different values, one of those updates will be lost.
+* Making a local change to a complex value. E.g. Adding an element to a list within a JSON document.
+* Two users editing a wiki page at the same time, where each user's changed is saved by sending the entire page contents to the server, it will overwrite whatever is in the database.
+
+A variety of solutions have been developed to deal with this scenario:
+### Atomic write operations
+A solution for this it to avoid the need to implement read-modify-write cycles and provide atomic operations such us
+
+```bash
+UPDATE counters SET value = value + 1 WHERE key = 'foo';
+```
+
+MongoDB provides atomic operations for making local modifications, and Redis provides atomic operations for modifying data structures.
+
+### Explicit locking
+The application explicitly lock objects that are going to be updated. You may need to specify in your application's code through an ORM or directly in SQL that the rows returned from a query should be locked.
+
+### Automatically detecting lost updates
+Allow them to execute in parallel, if the transaction manager detects a lost update, abort the transaction and force it to retry its read-modify-write cycle.
+
+### Compare-and-set
+If the current value does not match with what you previously read, the update has no effect.
+
+```bash
+UPDATE wiki_pages SET content = 'new content'
+  WHERE id = 1234 AND content = 'old content';
+```
+
+### Conflict resolution and replication
+Locks and compare-and-set operations assume that there's a single up-to-date copy of the data. However, for databases with multi-leader or leaderless replication, there's no guarantee of a single up-to-date copy of data.
+
+A common approach in replicated databases is to allow concurrent writes to create several conflicting versions of a value (also know as siblings), and to use application code or special data structures to resolve and merge these versions after the fact.
 
 ---
 
