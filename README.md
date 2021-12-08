@@ -1126,7 +1126,7 @@ In all approaches, it's important for there to be a consensus among all the node
 Many distributed systems rely on a coordination service like Zookeeper to keep track of this cluster metadata. This way, the other components of the system such as the routing tier or the partitioning-aware client can subscribe to this information in Zookeeper.
 
 --
-# Chapter 6: Transactions <a name="chapter6"></a>
+# Chapter 7: Transactions <a name="chapter7"></a>
 
 # Introduction
 * Transactions were **created to simplify the programming model for applications accessing a database**.
