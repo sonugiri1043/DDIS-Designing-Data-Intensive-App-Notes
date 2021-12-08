@@ -7,6 +7,8 @@
 4. [Chapter 4: Encoding and Evolution](#chapter4)
 5. [Chapter 5: Replication](#chapter5)
 6. [Chapter 6: Partitioning](#chapter6)
+7. [Chapter 7: Transactions](#chapter7)
+8. 
 
 We call an application data-intensive if data is its primary challenge - the quantity of data, the complexity of data, or the speed at which it is changing - as opposed to compute-intensive, where CPU cycles are the bottleneck.
 
