@@ -1184,9 +1184,46 @@ The core characteristics of this isolation level are that **it prevents dirty re
 * When reading from the database, **you will only see data that has been committed (no dirty reads)**. Writes by a transaction only become visible to others when that transaction commits.
 * When writing to the database, y**ou will only overwrite data that has been committed (no dirty writes)**. Dirty writes are prevented usually by delaying the second write until the first write's transaction has committed or aborted.
 
+![Figure 7-4](images/fig-7-4.png)
+
 Most databases prevent dirty writes by using row-level locks that hold the lock until the transaction is committed or aborted. Only one transaction can hold the lock for any given object.
 
+![Figure 7-5](images/fig-7-5.png)
+
 On dirty reads, requiring read locks does not work well in practice as one long-running write transaction can force many read-only transactions to wait. For every object that is written, **the database remembers both the old committed value and the new value set by the transaction that currently holds the write lock. While the transaction is ongoing, any other transactions that read the object are simply given the old value.**
+
+## Snapshot isolation and repeatable read
+With the read committed isolation level, there is still room for concurrency bugs. One of the anomalies that can happen is a **non-repeatable read or a read skew**.
+
+![Figure 7-6](images/fig-7-6.png)
+
+A read skew means that you might read the value of an object in one transaction before a separate transaction begins, and when that separate transaction ends, that value has changed into a new value. This happens because the read committed isolation only applies a lock on values that are about to be modified.
+
+Thus, a long running read-only transaction can have situations where the value of an object or multiple objects changes between when the transaction starts and when it ends, which can lead to inconsistencies.
+
+Read skew is considered acceptable under read committed isolation, but some situations cannot tolerate that temporary inconsistency:
+* **Backups**: During the time that the backup process is running, writes will continue to be made to the database. If you need to restore from such a backup, inconsistencies can become permanent.
+* **Analytic queries and integrity checks**: You may get nonsensical results if they observe parts of the database at different points in time.
+
+Snapshot isolation is the most common solution. The main idea is that each transaction reads a consistent snapshot of the database - that is, **a transaction will only see all the data that was committed in the database at the start of the transaction**. Even if another transaction changes the data, it won't be seen by the current transaction.
+
+This kind of isolation is especially beneficial for long-running, read only queries like backups and analytics, as the data on which they operate remains the same throughout the transaction.
+
+### Implementing snapshot isolation
+A core principle of snapshot isolation is this: _Readers never block writers, and writers never block readers_
+The implementation of snapshots typically use write locks to prevent dirty writes but have an alternate mechanism for preventing dirty reads.
+Write locks mean that a transaction that makes a write to an object can block the progress of another transaction that makes a write to the same object.
+
+The database must potentially keep several different committed versions of an object (multi-version concurrency control or MVCC).
+For a database providing only read committed isolation, we would only need to keep two versions of an object: the committed version and the overwritten-but-uncommitted version. However, with snapshot isolation, we keep different versions of the same object. 
+
+MVCC-based snapshot isolation is typically implemented by given each transaction a unique, always-increasing transaction ID. Any writes to the database by a transaction are tagged with the transaction ID of the writer. Each row in the table is tagged with a created_by and deleted_by field which has the transaction ID that performed the creation or deletion (when applicable).
+
+![Figure 7-7](images/fig-7-7.png)
+
+How do indexes work in a multi-version database? One option is to have the index simply point to all versions of an object and require an index query to filter out any object versions that are not visible to the current transaction.
+
+Snapshot isolation is called serializable in Oracle, and repeatable read in PostgreSQL and MySQL.
 
 ---
 
