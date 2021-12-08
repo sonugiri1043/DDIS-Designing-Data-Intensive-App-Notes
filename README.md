@@ -1125,7 +1125,7 @@ In all approaches, it's important for there to be a consensus among all the node
 
 Many distributed systems rely on a coordination service like Zookeeper to keep track of this cluster metadata. This way, the other components of the system such as the routing tier or the partitioning-aware client can subscribe to this information in Zookeeper.
 
---
+---
 # Chapter 7: Transactions <a name="chapter7"></a>
 
 # Introduction
@@ -1141,5 +1141,6 @@ Systems that don't meet the ACID criteria are sometimes called **BASE: Basically
 * **Isolation**: Concurrently executing transactions are isolated from each other. It's also called serializability, each transaction can pretend that it is the only transaction running on the entire database, and the result is the same as if they had run serially (one after the other).
 * **Durability**: Once a transaction has committed successfully, any data it has written will not be forgotten, even if there is a hardware fault or the database crashes. In a single-node database this means the data has been written to nonvolatile storage. In a replicated database it means the data has been successfully copied to some number of nodes.
 
---
+---
+
 Summarised from DDIS:https://github.com/Yang-Yanxiang/Designing-Data-Intensive-Applications 
