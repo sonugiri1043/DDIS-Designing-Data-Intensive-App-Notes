@@ -1709,6 +1709,38 @@ To make reads linearizable:
 
 For every message you want to send through total order broadcast, you increment-and-get the linearizable integer and then attach the value you got from the register as a sequence number to the message. YOu can send the message to all nodes, and the recipients will deliver the message consecutively by sequence number.
 
+# Distributed transactions and consensus
+Simply put, consensus means _getting several nodes to agree on something_. 
+
+There are situations in which it is important for nodes to agree:
+* Leader election: All nodes need to agree on which node is the leader.
+* Atomic commit: Get all nodes to agree on the outcome of the transacction, either they all abort or roll back.
+
+## Atomic commit and Two-Phase commit (2PC)
+A transaction either succesfully _commit, or abort_. Atomicity prevents half-finished results.
+On a single node, transaction commitment depends on the order in which data is writen to disk: first the data, then the commit record.
+
+![Figure 9-9](images/fig-9-9.png)
+
+2PC uses a coordinartor (_transaction manager_). When the application is ready to commit, the coordinator begins phase 1: it sends a prepare request to each of the nodes, asking them whether are able to commit.
+* If all participants reply "yes", the coordinator sends out a commit request in phase 2, and the commit takes place.
+* If any of the participants replies "no", the coordinator sends an abort request to all nodes in phase 2.
+When a participant votes "yes", it promises that it will definitely be able to commit later; and once the coordiantor decides, that decision is irrevocable. Those promises ensure the atomicity of 2PC.
+
+If one of the participants or the network fails during 2PC (prepare requests fail or time out), the coordinator aborts the transaction. If any of the commit or abort request fail, the coordinator retries them indefinitely.
+
+If the coordinator fails before sending the prepare requests, a participant can safely abort the transaction.
+
+![Figure 9-10](images/fig-9-10.png)
+
+The only way 2PC can complete is by waiting for the coordinator to revover in case of failure. This is why the coordinator must write its commit or abort decision to a transaction log on disk before sending commit or abort requests to participants.
+
+## Three-phase commit
+2PC is also called a blocking atomic commit protocol, as 2PC can become stuck waiting for the coordinator to recover.
+There is an alternative called _three-phase commit (3PC)_ that requires a _perfect failure detector_. The idea here is that it assumes a network with bounded delays and nodes with bounded response times. This means that when a delay exceeds that bound, a participant can safely assume that the coordinator has crashed.
+
+However, most practical systems have unbounded network delays and process pauses, and so it cannot guarantee atomicity. This difficulty in coming up with a perfect failure detector is why 2PC continues to be used today.
+
 ---
 
 Summarised from DDIS:https://github.com/Yang-Yanxiang/Designing-Data-Intensive-Applications 
