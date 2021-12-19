@@ -1638,6 +1638,75 @@ If an application does not require linearizability it can be more tolerant of ne
 
 CAP only considers one consistency model (linearizability) and one kind of fault (network partitions, or nodes that are alive but disconnected from each other). It doesn't say anything about network delays, dead nodes, or other trade-offs. CAP has been historically influential, but nowadays has little practical value for designing systems.
 
+# Ordering Guarantees
+## Ordering and Causality
+Cause comes before the effect. With causality, an ordering of events is guaranteed such that cause always comes before effect. If one event happened before another, causality will ensure that that relationship is captured i.e. the _happens-before relationship_. This is useful because if one event happens as a result of another one, it can lead to inconsistencies in the system if that order is not captured
+
+### The causal order is not a total order 
+**Total order** allows any two elements to be compared. eg, natural numbers are totally ordered.
+
+This difference between total order and a partial order is reflected when we compare Linearizability and Causality as consistency models:
+* Linearizablity. _total order_ of operations: if the system behaves as if there is only a single copy of the data.
+* Causality. Two events are ordered if they are causally related. Causality defines a _partial order_, not a total one (incomparable if they are concurrent).
+
+Linearizability is not the only way of preserving causality. **Causal consistency is the strongest possible consistency model that does not slow down due to network delays, and remains available in the face of network failures.**
+
+The version history of a system like Git is similar to a graph of causal dependencies. One commit often happens after another, but sometimes they branch off, and we create merges when those concurrently created commits are combined
+
+You need to know which operation _happened before_.
+
+In order to determine the causal ordering, the database needs to know which version of the data was read by the application. **The version number from the prior operation is passed back to the database on a write.**
+
+## Sequence Number Ordering
+We can create sequence numbers in a total order that is consistent with causality.
+
+With a single-leader replication, the leader can simply increment a counter for each operation, and thus assign a monotonically increasing sequence number to each operation in the replication log.
+
+If there is not a single leader (multi-leader or leaderless database):
+* Each node can generate its own independent set of sequence numbers. One node can generate only odd numbers and the other only even numbers.
+* Attach a timestamp from a time-of-day clock.
+* Preallocate blocks of sequence numbers. E.g node A could claim a block of numbers from 1 to 1000, and node B could claim the block from 1001 to 2000.
+
+The only problem is that the sequence numbers they generate are _not consistent with causality_. They do not correctly capture ordering of operations across different nodes.
+
+## Lamport timestamp
+There is simple method for generating sequence numbers that is consistent with causality: Lamport timestamps.
+
+Each node has a unique identifier, and each node keeps a counter of the number of operations it has processed. The lamport timestamp is then simply a pair of _(counter, node ID)_. It provides total order, as if you have two timestamps one with a greater counter value is the greater timestamp. If the counter values are the same, the one with greater node ID is the greater timestamp.
+
+_Every node and every client keeps track of the maximum counter value it has seen so far, and includes that maximum on every request. When a node receives a request of response with a maximum counter value greater than its own counter value, it inmediately increases its own counter to that maximum._
+
+As long as the maximum counter value is carried along with every operation, this scheme ensure that the ordering from the lamport timestamp is consistent with causality.
+
+![Figure 9-8](images/fig-9-8.png)
+
+Total order of operation only emerges after you have collected all of the operations.
+
+# Total order broadcast
+
+Reliable delivery: If a message is delivered to one node, it is delivered to all nodes.
+Totally ordered delivery: Mesages are delivered to every node in the same order.
+ZooKeeper and etcd implement total order broadcast.
+
+If every message represents a write to the database, and every replica processes the same writes in the same order, then the replcias will remain consistent with each other (state machine replication).
+
+A node is not allowed to retroactgively insert a message into an earlier position in the order if subsequent messages have already been dlivered.
+
+Another way of looking at total order broadcast is that it is a way of creating a log. Delivering a message is like appending to the log.
+
+If you have total order broadcast, you can build linearizable storage on top of it.
+
+Because log entries are delivered to all nodes in the same order, if therer are several concurrent writes, all nodes will agree on which one came first. Choosing the first of the conflicting writes as the winner and aborting later ones ensures that all nodes agree on whether a write was commited or aborted.
+
+This procedure ensures linearizable writes, it doesn't guarantee linearizable reads.
+
+To make reads linearizable:
+
+You can sequence reads through the log by appending a message, reading the log, and performing the actual read when the message is delivered back to you (etcd works something like this).
+Fetch the position of the latest log message in a linearizable way, you can query that position to be delivered to you, and then perform the read (idea behind ZooKeeper's sync()).
+You can make your read from a replica that is synchronously updated on writes.
+For every message you want to send through total order broadcast, you increment-and-get the linearizable integer and then attach the value you got from the register as a sequence number to the message. YOu can send the message to all nodes, and the recipients will deliver the message consecutively by sequence number.
+
 ---
 
 Summarised from DDIS:https://github.com/Yang-Yanxiang/Designing-Data-Intensive-Applications 
