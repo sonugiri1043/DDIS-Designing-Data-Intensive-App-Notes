@@ -9,6 +9,7 @@
 6. [Chapter 6: Partitioning](#chapter6)
 7. [Chapter 7: Transactions](#chapter7)
 8. [Chapter 8: The Trouble with Distributed Systems](#chapter8)
+9. [Chapter 9: Consistency and Consensus](#chapter9)
 
 We call an application data-intensive if data is its primary challenge - the quantity of data, the complexity of data, or the speed at which it is changing - as opposed to compute-intensive, where CPU cycles are the bottleneck.
 
@@ -1560,6 +1561,80 @@ Fencing tokens can detect and block a node that is inadvertently acting in error
 A system is Byzantine fault-tolerant if it continues to operate correctly even if some of the nodes are malfunctioning.
 * Aerospace environments
 * Multiple participating organisations, some participants may attempt ot cheat or defraud others
+
+---
+
+# Chapter 9: Consistency and Consensus <a name="chapter9"></a>
+# Introduction
+In this chapter, we focus on some of the abstractions which applications can rely on in building fault-tolerant distributed systems. One of these is 'Consensus'. Once there's a consensus implementation, applications can use it for things like leader election and state machine replication.
+
+# Consistency Guarantees
+* Write requests arrive on different nodes at different times.
+* Most replicated databases provide at least _eventual consistency_. The _inconsistency is temporary, and eventually resolves itself (convergence)_.
+* With weak guarantees, you need to be constantly aware of its limitations. Systems with stronger guarantees may have worse performance or be less fault-tolerant than systems with weaker guarantees.
+
+## Linearizability
+![Figure 9-1](images/fig-9-1.png)
+
+Make a **system appear as if there were only one copy of the data, and all operaitons on it are atomic.**
+* read(x) => v Read from register x, database returns value v.
+* write(x,v) => r r could be ok or error.
+
+![Figure 9-2](images/fig-9-2.png)
+
+_If one client read returns the new value, all subsequent reads must also return the new value_.
+* cas(x_old, v_old, v_new) => r an atomic compare-and-set operation. If the value of the register x equals v_old, it is atomically set to v_new. If x != v_old the registers is unchanged and it returns an error.
+
+![Figure 9-3](images/fig-9-3.png)
+![Figure 9-4](images/fig-9-4.png)
+
+### Linearizability vs Serializability
+* Serializability: _Transactions behave the same as if they had executed some serial order_.
+* Linearizability: _Recency guarantee on reads and writes_ of a register (individual object).
+
+When a database provides both serializability and linearizability, the guarantee is known as _strict serializability or strong one-copy serializability_.
+
+Two Phase-Locking and Actual Serial Execution are implementations of serializability that are also linearizable. However, serializable snapshot isolation is not linearizable, since a transaction will be reading values from a consistent snapshot.
+
+### Relying on Linearizability
+There are examples of where linearizability is important for making a system work correctly.
+
+#### Locking and leader election
+A system with a single-reader replication model must ensure that there's only ever one leader at a time. To ensure that there is indeed only one leader, a lock is used. It must be linearizable: all nodes must agree which nodes owns the lock; otherwise is useless.
+
+Apache ZooKeepr and etcd are often used for distributed locks and leader election.
+
+#### Constraints and uniqueness guarantees
+Unique constraints, like a username or an email address require a situation similiar to a lock.
+A hard uniqueness constraint in relational databases requires linearizability.
+
+#### Cross-channel timing dependencies
+![Figure 9-5](images/fig-9-5.png)
+
+### Implementing linearizable systems
+The simplest approach would be to have a single copy of the data, but this would not be able to tolerate faults.
+* Single-leader repolication is potentially linearizable. If we make every read from the leader or from synchronously updated followers, the system has the potential to be linearizable.
+* Consensus algorithms is linearizable. They are similar to single-leader replication, but they contain additional measures to prevent stale replicas and split-brain. As a result, consensus protocols are used to implement linearizable storage safely. Zookeeper and Etcd work this way.
+* Multi-leader replication is not linearizable.
+* Leaderless replication is probably not linearizable. These are typically non-linearizable because we know that clock timestamps are not guaranteed to be consistent with the actual ordering of events due to clock skew. Another circumstance where non-linearizability is almost guaranteed is when sloppy quorums are used.
+* Multi-leader replication is often a good choice for multi-datacenter replication. On a network interruption betwen data-centers will force a choice between linearizability and availability.
+
+![Figure 9-6](images/fig-9-6.png)
+
+### The Cost of Linearizability
+While linearizability is **often desirable, the performance costs mean that it is not always an ideal** guarantee.
+Consider a scenario where we have two data centers and there's a network interruption between those data centers:
+* In a multi-leader database setup, the operations can continue in each data center normally since the writes can be queued up until the network link is restored and replication can happen asynchronously.
+* With single-leader replication, the leader must be in one of the datacenters. If the application requires linearizable reads and writes, the network interruption causes the application to become unavailable.
+
+If your applicaiton requires linearizability, and some replicas are disconnected from the other replicas due to a network problem, the some replicas cannot process request while they are disconnected (unavailable).
+If your application does not require, then it can be written in a way tha each replica can process requests independently, even if it is disconnected from other replicas (peg: multi-leader), becoming available.
+If an application does not require linearizability it can be more tolerant of network problems.
+
+## The unhelpful CAP theorem
+**CAP is sometimes presented as Consistency, Availability, Partition tolerance**: pick 2 out of 3. Or being said in another way either **Consistency or Available when Partitioned.**
+
+CAP only considers one consistency model (linearizability) and one kind of fault (network partitions, or nodes that are alive but disconnected from each other). It doesn't say anything about network delays, dead nodes, or other trade-offs. CAP has been historically influential, but nowadays has little practical value for designing systems.
 
 ---
 
