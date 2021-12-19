@@ -1683,28 +1683,30 @@ As long as the maximum counter value is carried along with every operation, this
 Total order of operation only emerges after you have collected all of the operations.
 
 # Total order broadcast
+A Single-leader replication systems often only maintain ordering per partition. They do not have total ordering across all partitions. An example of such a system is Kafka. Total ordering across all partitions will require additional coordination.
 
-Reliable delivery: If a message is delivered to one node, it is delivered to all nodes.
-Totally ordered delivery: Mesages are delivered to every node in the same order.
+Total Order Broadcast (or Atomic Broadcast) is a broadcast a protocol for exchanging messages between nodes. It requires that the following safety properties are always satisfied:
+* Reliable delivery: If a message is delivered to one node, it is delivered to all nodes.
+* Totally ordered delivery: Mesages are delivered to every node in the same order.
+
 ZooKeeper and etcd implement total order broadcast.
 
+## Using total order broadcast 
 If every message represents a write to the database, and every replica processes the same writes in the same order, then the replcias will remain consistent with each other (state machine replication).
 
-A node is not allowed to retroactgively insert a message into an earlier position in the order if subsequent messages have already been dlivered.
+One thing to note with total order broadcast is that the **order is fixed at the time of message delivery**. This means that a node cannot retroactively insert a message into an earlier position if subsequent messages have been delivered. Messages must be delivered in the right order. This makes total order broadcast stronger than timestamp ordering.
 
 Another way of looking at total order broadcast is that it is a way of creating a log. Delivering a message is like appending to the log.
-
 If you have total order broadcast, you can build linearizable storage on top of it.
 
 Because log entries are delivered to all nodes in the same order, if therer are several concurrent writes, all nodes will agree on which one came first. Choosing the first of the conflicting writes as the winner and aborting later ones ensures that all nodes agree on whether a write was commited or aborted.
-
 This procedure ensures linearizable writes, it doesn't guarantee linearizable reads.
 
 To make reads linearizable:
+* You can sequence reads through the log by appending a message, reading the log, and performing the actual read when the message is delivered back to you (etcd works something like this).
+* Fetch the position of the latest log message in a linearizable way, you can query that position to be delivered to you, and then perform the read (idea behind ZooKeeper's sync()).
+* You can make your read from a replica that is synchronously updated on writes.
 
-You can sequence reads through the log by appending a message, reading the log, and performing the actual read when the message is delivered back to you (etcd works something like this).
-Fetch the position of the latest log message in a linearizable way, you can query that position to be delivered to you, and then perform the read (idea behind ZooKeeper's sync()).
-You can make your read from a replica that is synchronously updated on writes.
 For every message you want to send through total order broadcast, you increment-and-get the linearizable integer and then attach the value you got from the register as a sequence number to the message. YOu can send the message to all nodes, and the recipients will deliver the message consecutively by sequence number.
 
 ---
