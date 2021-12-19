@@ -1741,6 +1741,88 @@ There is an alternative called _three-phase commit (3PC)_ that requires a _perfe
 
 However, most practical systems have unbounded network delays and process pauses, and so it cannot guarantee atomicity. This difficulty in coming up with a perfect failure detector is why 2PC continues to be used today.
 
+## Distributed Transactions in Practice
+Distributed transactions carry a _heavy performance penalty due the disk forcing in 2PC required for crash recovery and additional network round-trips_.
+
+There are two types of distributed transaction which often get conflated:
+* Database-internal distributed transactions: Transactions performed by a distributed database that spans multiple replicas or partitions. VoltDB and MySQL Cluster's NDB storage engine support such transactions. Here, all the nodes participating in the transaction are running the same database software.
+* Heterogenous distributed transactions: Here, the participants are two or more different technologies. For example, we could have two databases from different vendors, or even non-database systems such as message brokers. Although the systems may be entirely different under the hood, a distributed transaction has to ensure atomic commit across these systems.
+
+### XA Transactions
+XA (X/Open XA for eXtended Architecture) is a standard for implementing two-phase commit across heterogeneous technologies. Supported by many traditional relational databases (PostgreSQL, MySQL, DB2, SQL Server, and Oracle) and message brokers (ActiveMQ, HornetQ, MSQMQ, and IBM MQ).
+
+XA is a C API for interacting with a transaction coordinator, but bindings for the API exist in other languages.
+
+### Holding locks while in doubt
+The problem with locking is that database transactions usually take a row-level exclusive lock on any rows they modify, to prevent dirty writes.
+While those locks are held, no other transaction can modify those rows.
+
+When a coordinator fails, orphaned in-doubt transactions do ocurr, and the only way out is for an administrator to manually decide whether to commit or roll back the transaction
+
+If we're using a two-phase commit protocol and the coordinator crashes, the locks will be held until the coordinator is restarted. No other transaction can modify these rows while the locks are held. The impact of this is that it can lead to large parts of your **application being unavailable**: If other transactions want to access the rows held by an in-doubt transaction, they will be blocked until the transaction is resolved.
+
+# Fault-Tolerant Consensus
+One or more nodes may propose values, and the consensus algorithm decides on those values.
+
+Consensus algorithm must satisfy the following properties:
+* Uniform agreement: No two nodes decide differently.
+* Integrity: No node decides twice.
+* Validity: If a node decides the value v, then v was proposed by some node.
+* Termination: Every node that does not crash eventually decides some value.
+
+If you don't care about fault tolerance, then satisfying the first three properties is easy: you can just hardcode one node to be the "dictator" and let that node make all of the decisions.
+The termination property formalises the idea of fault tolerance. Even if some nodes fail, the other nodes must still reach a decision. Termination is a liveness property, whereas the other three are safety properties.
+
+## Consensus algorithms and total order broadcast
+**The best-known fault-tolerant consensus algorithms are Viewstamped Replication (VSR), Paxos, Raft and Zab.**
+
+Total order broadcast requires messages to be delivered exactly once, in the same order, to all nodes. 
+So total order broadcast is equivalent to repeated rounds of consensus:
+* Due to agreement property, all nodes decide to deliver the same messages in the same order.
+* Due to integrity, messages are not duplicated.
+* Due to validity, messages are not corrupted.
+* Due to termination, messages are not lost.
+
+Viewstamped Replication, Raft, and Zab implement total order broadcast directly, because that is more efficient than doing repeated rounds of one-value-at-a-time consensus. In the case of Paxos, this optimization is known as Multi-Paxos.
+
+## Single-leader replication and consensus
+All of the consensus protocols dicussed so far internally use a leader, but they don't guarantee that the lader is unique. Protocols define an _epoch number_ (_ballot number_ in Paxos, _view number_ in Viewstamped Replication, and _term number_ in Raft). Within each epoch, the leader is unique.
+
+Every time the current leader is thought to be dead, a vote is started among the nodes to elect a new leader. This election is given an incremented epoch number, and thus epoch numbers are totally ordered and monotonically increasing. If there is a conflic, the leader with the higher epoch number prevails.
+
+A node cannot trust its own judgement. It must collect votes from a quorum of nodes. For every decision that a leader wants to make, it must send the proposed value to the other nodes and wait for a quorum of nodes to respond in favor of the proposal.
+There are two rounds of voting, once to choose a leader, and second time to vote on a leader's proposal. The quorums for those two votes must overlap.
+
+The biggest difference with 2PC, is that 2PC requires a "yes" vote for every participant.
+The benefits of consensus come at a cost. The process by which nodes vote on proposals before they are decided is kind of synchronous replication.
+
+Consensus always require a strict majority to operate.
+Most consensus algorithms assume a fixed set of nodes that participate in voting, which means that you can't just add or remove nodes in the cluster. _Dynamic membership_ extensions are much less well understood than static membership algorithms.
+
+Consensus systems rely on timeouts to detect failed nodes. In geographically distributed systems, it often happens that a node falsely believes the leader to have failed due to a network issue. This implies frequest leader elecctions resulting in terrible performance, spending more time choosing a leader than doing any useful work.
+
+# Membership and coordination services
+ZooKeeper or etcd are often described as "distributed key-value stores" or "coordination and configuration services".
+
+They are _designed to hold small amounts of data that can fit entirely in memory_, you wouldn't want to store all of your application's data here. Data is replicated across all the nodes using a fault-tolerant total order broadcast algorithm.
+
+ZooKeeper is modeled after Google's Chubby lock service and it provides some useful features:
+* Linearizable atomic operations: Usuing an atomic compare-and-set operation, you can implement a lock.
+* Total ordering of operations: When some resource is protected by a lock or lease, you need a fencing token to prevent clients from conflicting with each other in the case of a process pause. The fencing token is some number that monotonically increases every time the lock is acquired.
+* Failure detection: Clients maintain a long-lived session on ZooKeeper servers. When a ZooKeeper node fails, the session remains active. When ZooKeeper declares the session to be dead all locks held are automatically released.
+* Change notifications: Not only can one client read locks and values, it can also watch them for changes.
+ZooKeeper is super useful for distributed coordination.
+
+ZooKeeper/Chubby model works well when you have several instances of a process or service, and one of them needs to be chosen as a leader or primary. If the leader fails, one of the other nodes should take over. This is useful for single-leader databases and for job schedulers and similar stateful systems.
+
+ZooKeeper runs on a fixed number of nodes, and performs its majority votes among those nodes while supporting a potentially large number of clients.
+
+The kind of _data managed by ZooKeeper is quite slow-changing_ like "the node running on 10.1.1.23 is the leader for partition 7". It is not intended for storing the runtime state of the application. If application state needs to be replicated there are other tools (like Apache BookKeeper).
+
+ZooKeeper, etcd, and Consul are also often used for **service discovery**, find out which IP address you need to connect to in order to reach a particular service. In cloud environments, it is common for virtual machines to continually come an go, you often don't know the IP addresses of your services ahead of time. Your services when they start up they register their network endpoints ina service registry, where they can then be found by other services.
+
+ZooKeeper and friends can be seen as part of a long history of research into membership services, determining which nodes are currently active and live members of a cluster.
+
 ---
 
 Summarised from DDIS:https://github.com/Yang-Yanxiang/Designing-Data-Intensive-Applications 
