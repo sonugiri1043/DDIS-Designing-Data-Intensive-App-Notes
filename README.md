@@ -1627,6 +1627,8 @@ Consider a scenario where we have two data centers and there's a network interru
 * In a multi-leader database setup, the operations can continue in each data center normally since the writes can be queued up until the network link is restored and replication can happen asynchronously.
 * With single-leader replication, the leader must be in one of the datacenters. If the application requires linearizable reads and writes, the network interruption causes the application to become unavailable.
 
+![Figure 9-7](images/fig-9-7.png)
+
 If your applicaiton requires linearizability, and some replicas are disconnected from the other replicas due to a network problem, the some replicas cannot process request while they are disconnected (unavailable).
 If your application does not require, then it can be written in a way tha each replica can process requests independently, even if it is disconnected from other replicas (peg: multi-leader), becoming available.
 If an application does not require linearizability it can be more tolerant of network problems.
