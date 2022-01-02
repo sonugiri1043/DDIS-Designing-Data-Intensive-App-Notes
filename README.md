@@ -10,6 +10,7 @@
 7. [Chapter 7: Transactions](#chapter7)
 8. [Chapter 8: The Trouble with Distributed Systems](#chapter8)
 9. [Chapter 9: Consistency and Consensus](#chapter9)
+10. [Chapter 9:Batch Processing](#chapter10)
 
 We call an application data-intensive if data is its primary challenge - the quantity of data, the complexity of data, or the speed at which it is changing - as opposed to compute-intensive, where CPU cycles are the bottleneck.
 
@@ -1824,5 +1825,149 @@ ZooKeeper, etcd, and Consul are also often used for **service discovery**, find 
 ZooKeeper and friends can be seen as part of a long history of research into membership services, determining which nodes are currently active and live members of a cluster.
 
 ---
+# Part III: Derived Data
+Systems often consist if multiple databases, indexes, caches, and analytics systems, thus, it needs to implement mechanisms for moving data from one store to another.
 
-Summarised from DDIS:https://github.com/Yang-Yanxiang/Designing-Data-Intensive-Applications 
+Systems that stores and process data can be grouped into two broad categories:
+
+* **System of records**: acts as a source of truth, and holds the authoritative version of any new coming data, while being represented only once, and usually normalized.
+* **Derived data systems**: the result of transforming or processing data from other source. It can easily be recreated from its original source if lost. Its commonly denormalized and redundant, but is essential for good read performance.
+
+---
+
+# Chapter 10: Batch Processing <a name="chapter10"></a>
+
+# Introduction
+All systems can fit into three main categories:
+* **Service (online)**: waits for a request, sends a response back
+* **Batch processing system (offline)**: takes a large amount of input data, runs a job to process it, and produces some output.
+* **Stream processing systems (near-real-time)**: a stream processor consumes input and produces outputs. A stream job operates on events shortly after they happen.
+
+# Batch processing with Unix tools
+Many data analysis can be done in few minutes using some combination of Unix commands awk, sed, grep, sort, uniq, and xargs. 
+``` 
+cat /var/log/nginx/access.log |
+  awk '{print $7}' |
+  sort             |
+  uniq -c          |
+  sort -r -n       |
+  head -n 5        |
+```
+You could write the same thing with a simple program.
+The difference is that with Unix commands automatically handle larger-than-memory datasets and automatically paralelizes sorting across multiple CPU cores.
+
+Programs must have the same data format to pass information to one another. In Unix, that interface is a file (file descriptor), an ordered sequence of bytes.
+By convention Unix programs treat this sequence of bytes as ASCII text.
+
+The unix approach works best if a program simply uses stdin and stdout. This allows a shell user to wire up the input and output in whatever way they want; the program doesn't know or care where the input is coming from and where the output is going to.
+
+The biggest limitation of Unix tools is that it can only run on a single machine, that's where tools like Hadoop come in.
+
+# MapReduce and Distributed File Systems
+A single MapReduce job is comparable to a single Unix process.
+
+Running a MapReduce job normally _does not modify the input_ and does not have any side effects other than producing the output.
+
+While Unix tools use stdin and stdout as input and output, _MapReduce jobs read and write files on a distributed filesystem_. In Hadoop, that filesystem is called HDFS (Haddoop Distributed File System).
+
+_HDFS is based on the shared-nothing principle_. Implemented by centralised storage appliance, often using custom hardware and special network infrastructure.
+_HDFS consists of a daemon process running on each machine, exposing a network service that allows other nodes to access files stored on that machine_. _A central server called the NameNode keeps track of which file blocks are stored on which machine._
+File blocks are replicated on multiple machines. Reaplication may mean simply several copies of the same data on multiple machines, or an erasure coding scheme such as Reed-Solomon codes, which allow lost data to be recovered.
+
+MapReduce is a programming framework with which you can write code to process large datasets in a distributed filesystem like HDFS.
+1. Read a set of input files, and break it up into records.
+2. Call the mapper function to extract a key and value from each input record.
+3. Sort all of the key-value pairs by key.
+4. Call the reducer function to iterate over the sorted key-value pairs.
+* **Mapper**: Called once for every input record, and its job is to extract the key and value from the input record.
+* **Reduce**r: Takes the key-value pairs produced by the mappers, collects all the values belonging to the same key, and calls the reducer with an interator over that collection of vaues.
+
+MapReduce can parallelise a computation across many machines, without you having ot write code to explicitly handle the parallelism. THe mapper and reducer only operate on one record at a time; they don't need to know where their input is coming from or their output is going to.
+
+In Hadoop MapReduce, the mapper and reducer are each a Java class that implements a particular interface.
+
+The MapReduce scheduler tries to run each mapper on one of the machines that stores a replica of the input file, **putting the computation near the data.**
+The reduce side of the computation is also partitioned. While the number of map tasks is determined by the number of input file blocks, the number of reduce tasks is configured by the job author. To ensure that all key-value pairs with the same key end up in the same reducer, the framework uses a hash of the key.
+
+The dataset is likely too large to be sorted with a conventional sorting algorithm on a single machine. Sorting is performed in stages.
+
+Whenever a mapper finishes reading its input file and writing its sorted output files, the _MapReduce scheduler notifies the reducers that they can start fetching the output files from that mapper. The reducers connect to each of the mappers and download the files of sorted key-value pairs for their partition._ Partitioning by reducer, sorting and copying data partitions from mappers to reducers is called shuffle.
+
+The reduce task takes the files from the mappers and merges them together, preserving the sort order.
+
+MapReduce jobs can be chained together into workflows, the output of one job becomes the input to the next job. In Hadoop this chaining is done implicitly by directory name: the first job writes its output to a designated directory in HDFS, the second job reads that same directory name as its input.
+
+Compared with the Unix example, it could be seen as in each sequence of commands each command output is written to a temporary file, and the next command reads from the temporary file.
+
+In an example of a social network, small number of celebrities may have many millions of followers. Such disproportionately active database records are known as linchpin objects or hot keys. A single reducer can lead to significant skew that is, one reducer that must process significantly more records than the others.
+The skewed join method in Pig first runs a sampling job to determine which keys are hot and then records related to the hot key need to be replicated to all reducers handling that key. 
+Handling the hot key over several reducers is called shared join method. In Crunch is similar but requires the hot keys to be specified explicitly.
+Hive's skewed join optimisation requries hot keys to be specified explicitly and it uses map-side join. If you can make certain assumptions about your input data, it is possible to make joins faster. A MapReducer job with no reducers and no sorting, each mapper simply reads one input file and writes one output file.
+
+## Output of Batch Workflows
+The output of a batch process is often not a report, but some other kind of structure.
+
+### Building Search Indexes
+Google's original use of MapReduce was to build indexes for its search engine. _Hadoop MapReduce remains a good way of building indexes for Lucene/Solr._
+
+If you need to perform a full-text search, a batch process is very effective way of building indexes: the mappers partition the set of documents as needed, each reducer builds the index for its partition, and the index files are written to the distributed filesystem. It pararellises very well.
+
+Machine learning systems such as clasifiers and recommendation systems are a common use for batch processing.
+
+### Key-value stores as batch process output
+The output of those batch jobs is often some kind of database.
+
+So, how does the output from the batch process get back into a database?
+
+Writing from the batch job directly to the database server is a bad idea:
+* Making a network request for every single record is magnitude slower than the normal throughput of a batch task.
+* Mappers or reducers concurrently write to the same output database an it can be easily overwhelmed.
+* You have to worry about the results from partially completed jobs being visible to other systems.
+
+A much better solution is to build a brand-new database inside the batch job an write it as files to the job's output directory, so it can be loaded in bulk into servers that handle read-only queries. Various key-value stores support building database files in MapReduce including Voldemort, Terrapin, ElephanDB and HBase bulk loading.
+
+By treating inputs as immutable and avoiding side effects (such as writing to external databases), batch jobs not only achieve good performance but also become much easier to maintain.
+
+## Comparing Hadoop to Distributed Databases
+Design principles that worked well for Unix also seem to be working well for Hadoop.
+
+The MapReduce paper was not at all new. The sections we've seen had been already implemented in so-called _massively parallel processing (MPP)_ databases.
+
+The biggest difference is that MPP databases focus on parallel execution of analytic SQL queries on a cluster of machines, while the combination of MapReduce and a distributed filesystem provides something much more like a general-purpose operating system that can run arbitraty programs.
+
+Hadoop opened up the possibility of indiscriminately dumping data into HDFS. MPP databases typically require careful upfront modeling of the data and query patterns before importing data into the database's proprietary storage format.
+
+In MapReduce instead of forcing the producer of a dataset to bring it into a standarised format, the interpretation of the data becomes the consumer's problem.
+
+If you have HDFS and MapReduce, you can build a SQL query execution engine on top of it, and indeed this is what the Hive project did.
+
+If a node crashes while a query is executing, most MPP databases abort the entire query. MPP databases also prefer to keep as much data as possible in memory.
+
+MapReduce can tolerate the failure of a map or reduce task without it affecting the job. It is also very eager to write data to disk, partly for fault tolerance, and partly because the dataset might not fit in memory anyway.
+
+MapReduce is more appropriate for larger jobs.
+
+At Google, a MapReduce task that runs for an hour has an approximately 5% risk of being terminated to make space for higher-priority process.
+Ths is why MapReduce is designed to tolerate frequent unexpected task termination.
+
+# Beyond MapReduce
+In response to the difficulty of using MapReduce directly, various higher-level programming models emerged on top of it: Pig, Hive, Cascading, Crunch.
+
+MapReduce has poor performance for some kinds of processing. It's very robust, you can use it to process almost arbitrarily large quantities of data on an unreliable multi-tenant system with frequent task terminations, and it will still get the job done.
+
+The files on the distributed filesystem are simply intermediate state: a means of passing data from one job to the next.
+
+The process of writing out the intermediate state to files is called **materialisation**.
+
+MapReduce's approach of fully materialising state has some downsides compared to Unix pipes:
+* A MapReduce job can only start when all tasks in the preceding jobs have completed, whereas processes connected by a Unix pipe are started at the same time.
+* Mappers are often redundant: they just read back the same file that was just written by a reducer.
+* Files are replicated across several nodes, which is often overkill for such temporary data.
+
+To fix these problems with MapReduce, new execution engines for distributed batch computations were developed, Spark, Tez and Flink. These new ones can handle an entire workflow as one job, rather than breaking it up into independent subjobs (dataflow engines).
+
+These functions need not to take the strict roles of alternating map and reduce, they are assembled in flexible ways, in functions called operators.
+
+Spark, Flink, and Tex avoid writing intermediate state to HDFS, so they take a different approach to tolerating faults: if a machine fails and the intermediate state on that machine is lost, it is recomputed from other data that is still available.
+
+The framework must keep track of how a given piece of data was computed. Spark uses the resilient distributed dataset (RDD) to track ancestry data, while Flink checkpoints operator state, allowing it to resume running an operator that ran into a fault during its execution.
