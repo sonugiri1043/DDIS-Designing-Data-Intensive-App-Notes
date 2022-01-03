@@ -10,7 +10,7 @@
 7. [Chapter 7: Transactions](#chapter7)
 8. [Chapter 8: The Trouble with Distributed Systems](#chapter8)
 9. [Chapter 9: Consistency and Consensus](#chapter9)
-10. [Chapter 9:Batch Processing](#chapter10)
+10. [Chapter 10: Batch Processing](#chapter10)
 
 We call an application data-intensive if data is its primary challenge - the quantity of data, the complexity of data, or the speed at which it is changing - as opposed to compute-intensive, where CPU cycles are the bottleneck.
 
@@ -1971,3 +1971,24 @@ These functions need not to take the strict roles of alternating map and reduce,
 Spark, Flink, and Tex avoid writing intermediate state to HDFS, so they take a different approach to tolerating faults: if a machine fails and the intermediate state on that machine is lost, it is recomputed from other data that is still available.
 
 The framework must keep track of how a given piece of data was computed. Spark uses the resilient distributed dataset (RDD) to track ancestry data, while Flink checkpoints operator state, allowing it to resume running an operator that ran into a fault during its execution.
+
+# Graphs and Iterative Processing
+It's interesting to look at graphs in batch processing context, where the goal is to perform some kind of offline processing or analysis on an entire graph. This need often arises in machine learning applications such as recommendation engines, or in ranking systems.
+
+"repeating until done" cannot be expressed in plain MapReduce as it runs in a single pass over the data and some extra trickery is necessary.
+
+An optimisation for batch processing graphs, the bulk synchronous parallel (BSP) has become popular. It is implemented by Apache Giraph, Spark's GraphX API, and Flink's Gelly API (_Pregel model, as Google Pregel paper popularised it).
+
+One vertex can "send a message" to another vertex, and typically those messages are sent along the edges in a graph.
+
+The difference from MapReduce is that a vertex remembers its state in memory from one iteration to the next.
+
+The fact that vertices can only communicate by message passing helps improve the performance of Pregel jobs, since messages can be batched.
+
+Fault tolerance is achieved by periodically checkpointing the state of all vertices at the end of an interation.
+
+The framework may partition the graph in arbitrary ways.
+
+Graph algorithms often have a lot of cross-machine communication overhead, and the intermediate state is often bigger than the original graph.
+
+If your graph can fit into memory on a single computer, it's quite likely that a single-machine algorithm will outperform a distributed batch process. If the graph is too big to fit on a single machine, a distributed approach such as Pregel is unavoidable.
